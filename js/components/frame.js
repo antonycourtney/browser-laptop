@@ -16,6 +16,7 @@ const remote = global.require('electron').remote
 import adInfo from '../data/adInfo.js'
 import Config from '../constants/config.js'
 import FindBar from './findbar.js'
+import TabManagerPopup from './tabManagerPopup.js'
 import { isSourceAboutUrl, getTargetAboutUrl } from '../lib/appUrlUtil.js'
 
 class Frame extends ImmutableComponent {
@@ -284,6 +285,10 @@ class Frame extends ImmutableComponent {
     }
   }
 
+  onTabManagerHide () {
+    WindowActions.setTabManagerShown(this.props.frame, false)
+  }
+
   onClearMatch () {
     this.webview.stopFindInPage('clearSelection')
   }
@@ -317,6 +322,12 @@ class Frame extends ImmutableComponent {
         active={this.props.frame.get('findbarShown')}
         frame={this.props.frame}
         findDetail={this.props.frame.get('findDetail')}
+      />
+      <TabManagerPopup
+        ref='tabManagerPopup'
+        active={this.props.frame.get('tabManagerShown')}
+        frame={this.props.frame}
+        onHide={this.onTabManagerHide.bind(this)}
       />
       <div ref={node => this.webviewContainer = node}
         className={cx({

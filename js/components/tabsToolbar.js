@@ -15,6 +15,10 @@ class TabsToolbarButtons extends ImmutableComponent {
       { this.props.partOfFullPageSet || this.props.noFrames
           ? <Button label='+'
               className='navbutton newFrameButton' onClick={WindowActions.newFrame} /> : null }
+      <Button iconClass='fa-list-alt'
+        className='navbutton menu-button'
+        onClick={this.props.onTabManager}
+       />
       <Button iconClass='fa-bars'
         className='navbutton menu-button'
         onClick={this.props.onMenu} />
@@ -51,7 +55,9 @@ class TabsToolbar extends ImmutableComponent {
       />
       <TabsToolbarButtons partOfFullPageSet={currentFrames.size === this.props.tabsPerTabPage}
         noFrames={currentFrames.size === 0}
-        onMenu={this.props.onMenu}/>
+        onMenu={this.props.onMenu}
+        onTabManager={this.props.onTabManager}
+        />
     </div>
   }
 }

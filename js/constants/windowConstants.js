@@ -48,6 +48,7 @@ const windowConstants = {
   WINDOW_SET_BLOCKED_BY: _, // Whether or not to show site info like # of blocked ads
   WINDOW_SET_SECURITY_STATE: _,
   WINDOW_SET_STATE: _,
+  WINDOW_SET_TAB_MANAGER_SHOWN: _, // whether the tab manager popup is shown
   WINDOW_ZOOM_IN: _,
   WINDOW_ZOOM_OUT: _,
   WINDOW_ZOOM_RESET: _

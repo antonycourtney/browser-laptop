@@ -181,6 +181,11 @@ class Main extends ImmutableComponent {
     contextMenus.onHamburgerMenu(settings)
   }
 
+  onTabManagerPopup () {
+    const activeFrame = FrameStateUtil.getActiveFrame(this.props.windowState)
+    WindowActions.setTabManagerShown(activeFrame, true)
+  }
+
   onMainFocus () {
     // When the main container is in focus, set the URL bar to inactive.
     WindowActions.setUrlBarActive(false)
@@ -269,6 +274,7 @@ class Main extends ImmutableComponent {
           key='tab-bar'
           activeFrame={activeFrame}
           onMenu={this.onHamburgerMenu.bind(this)}
+          onTabManager={this.onTabManagerPopup.bind(this)}
         />
         <UpdateBar updates={this.props.appState.get('updates')} />
       </div>

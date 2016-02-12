@@ -153,6 +153,19 @@ const WindowActions = {
   },
 
   /**
+   * Shows/hides the tab Manager popup.
+   * @param {Object} frameProps - The frame properties to modify
+   * @param {boolean} shown - Whether to show the popup
+   */
+  setTabManagerShown: function (frameProps, shown) {
+    WindowDispatcher.dispatch({
+      actionType: WindowConstants.WINDOW_SET_TAB_MANAGER_SHOWN,
+      frameProps,
+      shown
+    })
+  },
+
+  /**
    * Sets a frame as pinned
    * @param {Object} frameProps - The frame properties to modify
    * @param {boolean} isPinned - Whether to pin or not
