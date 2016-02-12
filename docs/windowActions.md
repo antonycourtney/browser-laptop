@@ -98,6 +98,18 @@ Shows/hides the find-in-page bar.
 
 
 
+### setTabManagerShown(frameProps, shown) 
+
+Shows/hides the tab Manager popup.
+
+**Parameters**
+
+**frameProps**: `Object`, The frame properties to modify
+
+**shown**: `boolean`, Whether to show the popup
+
+
+
 ### setPinned(frameProps, isPinned) 
 
 Sets a frame as pinned
