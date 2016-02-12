@@ -11,7 +11,6 @@ const UrlBar = require('./urlBar')
 const AppActions = require('../actions/appActions')
 const {isSiteInList} = require('../state/siteUtil')
 const SiteTags = require('../constants/siteTags')
-const remote = global.require('electron').remote
 const messages = require('../constants/messages')
 const ipc = global.require('electron').ipcRenderer
 import { isSourceAboutUrl } from '../lib/appUrlUtil.js'
@@ -32,11 +31,11 @@ class NavigationBar extends ImmutableComponent {
   }
 
   onReload () {
-    remote.getCurrentWebContents().send(messages.SHORTCUT_ACTIVE_FRAME_RELOAD)
+    ipc.emit(messages.SHORTCUT_ACTIVE_FRAME_RELOAD)
   }
 
   onStop () {
-    remote.getCurrentWebContents().send(messages.SHORTCUT_ACTIVE_FRAME_STOP)
+    ipc.emit(messages.SHORTCUT_ACTIVE_FRAME_STOP)
   }
 
   get bookmarked () {
@@ -102,14 +101,16 @@ class NavigationBar extends ImmutableComponent {
         settings={this.props.settings}
         urlbar={this.props.navbar.get('urlbar')}
         />
-      <div className='endButtons'>
-        <Button iconClass='fa-star-o'
-          className='navbutton bookmark-button'
-          onClick={this.onAddBookmark.bind(this)} />
-        <Button iconClass='fa-star-o'
-          className='navbutton remove-bookmark-button'
-          onClick={this.onRemoveBookmark.bind(this)} />
-      </div>
+      { isSourceAboutUrl(frameProps.get('location')) ? null
+      : <div className='endButtons'>
+          <Button iconClass='fa-star-o'
+            className='navbutton bookmark-button'
+            onClick={this.onAddBookmark.bind(this)} />
+          <Button iconClass='fa-star-o'
+            className='navbutton remove-bookmark-button'
+            onClick={this.onRemoveBookmark.bind(this)} />
+        </div>
+      }
     </div>
   }
 }

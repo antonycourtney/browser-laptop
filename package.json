@@ -1,6 +1,6 @@
 {
   "name": "brave",
-  "version": "0.7.12",
+  "version": "0.7.14",
   "description": "Brave laptop and desktop browser",
   "main": "./app/index.js",
   "scripts": {
@@ -105,7 +105,7 @@
     "spectron": "^0.36.0",
     "standard": "^5.4.1",
     "style-loader": "^0.13.0",
-    "webdriverio": "^3.3.0",
+    "webdriverio": "^4.0.3",
     "webpack": "^1.12.9",
     "webpack-dev-server": "^1.14.0",
     "webpack-notifier": "^1.2.1",
@@ -130,6 +130,6 @@
   ],
   "engineStrict": true,
   "engines": {
-    "node": ">= 5.0.0"
+    "node": ">= 5.6.0"
   }
 }

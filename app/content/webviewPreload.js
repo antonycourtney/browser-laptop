@@ -4,6 +4,8 @@
 
 // hide this from the rest of the page
 (function () {
+  'use strict'
+
   var ipcRenderer = process.binding.v8_util.getHiddenValue(this, 'ipc')
 
   /**
@@ -80,33 +82,45 @@
     var segment_expiration_time = 0 // no expiration
 
     // ref param for referrer when possible
-    var srcUrl = replacementUrl + '?width=' + adSize[0] + '&height=' + adSize[1] + '&seg=' + segment + ':' + time_in_segment + ':' + segment_expiration_time
-    var src = '<html><body style="width: ' + adSize[0] + 'px; height: ' + adSize[1] + '; padding: 0; margin: 0; overflow: hidden;"><script src="' + srcUrl + '"></script></body></html>'
+    var srcUrl = replacementUrl +
+                  '?width=' + adSize[0] +
+                  '&height=' + adSize[1] +
+                  '&seg=' + segment + ':' + time_in_segment + ':' + segment_expiration_time
 
-    if (node.tagName === 'IFRAME') {
-      node.srcdoc = src
-      node.sandbox = 'allow-scripts'
-    } else {
-      while (node.firstChild) {
-        node.removeChild(node.firstChild)
-      }
-      var iframe = document.createElement('iframe')
-      iframe.style.padding = 0
-      iframe.style.border = 0
-      iframe.style.margin = 0
-      iframe.style.width = adSize[0] + 'px'
-      iframe.style.height = adSize[1] + 'px'
-      iframe.srcdoc = src
-      iframe.sandbox = 'allow-scripts allow-popups'
-      node.appendChild(iframe)
-      ensureNodeVisible(node)
-      if (node.parentNode) {
-        ensureNodeVisible(node.parentNode)
-        if (node.parentNode) {
-          ensureNodeVisible(node.parentNode.parentNode)
+    var xhttp = new window.XMLHttpRequest()
+    xhttp.onreadystatechange = function () {
+      if (xhttp.readyState === 4 && xhttp.status === 200) {
+        var src = '<html><body style="width: ' + adSize[0] + 'px; height: ' + adSize[1] +
+                            '; padding: 0; margin: 0; overflow: hidden;">' + xhttp.responseText + '</body></html>'
+        var sandbox = 'allow-scripts allow-popups allow-popups-to-escape-sandbox'
+        if (node.tagName === 'IFRAME') {
+          node.srcdoc = src
+          node.sandbox = sandbox
+        } else {
+          while (node.firstChild) {
+            node.removeChild(node.firstChild)
+          }
+          var iframe = document.createElement('iframe')
+          iframe.style.padding = 0
+          iframe.style.border = 0
+          iframe.style.margin = 0
+          iframe.style.width = adSize[0] + 'px'
+          iframe.style.height = adSize[1] + 'px'
+          iframe.srcdoc = src
+          iframe.sandbox = sandbox
+          node.appendChild(iframe)
+          ensureNodeVisible(node)
+          if (node.parentNode) {
+            ensureNodeVisible(node.parentNode)
+            if (node.parentNode) {
+              ensureNodeVisible(node.parentNode.parentNode)
+            }
+          }
         }
       }
     }
+    xhttp.open('GET', srcUrl, true)
+    xhttp.send()
   }
 
   // Fires when the browser has ad replacement information to give
@@ -241,12 +255,112 @@
     }
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  // shamelessly taken from https://developer.mozilla.org/en-US/docs/Web/Events/mouseenter
+  function delegate (event, selector) {
+    var target = event.target
+    var related = event.relatedTarget
+    var match
+
+    // search for a parent node matching the delegation selector
+    while (target && target !== document && !(match = target.matches(selector))) {
+      target = target.parentNode
+    }
+
+    // exit if no matching node has been found
+    if (!match) {
+      return
+    }
+
+    // loop through the parent of the related target to make sure that it's not a child of the target
+    while (related && related !== target && related !== document) {
+      related = related.parentNode
+    }
+
+    // exit if this is the case
+    if (related === target) {
+      return
+    }
+
+    return target
+  }
+
+  document.addEventListener('mouseover', (event) => {
+    var target = delegate(event, 'a')
+    if (target) {
+      const pos = {
+        x: event.clientX,
+        y: event.clientY
+      }
+      ipcRenderer.send('link-hovered', target.href, pos)
+    }
+  })
+
+  document.addEventListener('mouseout', (event) => {
+    if (delegate(event, 'a')) {
+      ipcRenderer.send('link-hovered', null)
+    }
+  })
+
+  const rgbaFromStr = function (rgba) {
+    if (!rgba) {
+      return undefined
+    }
+    return rgba.split('(')[1].split(')')[0].split(',')
+  }
+  const distance = function (v1, v2) {
+    let d = 0
+    for (let i = 0; i < v2.length; i++) {
+      d += (v1[i] - v2[i]) * (v1[i] - v2[i])
+    }
+    return Math.sqrt(d)
+  }
+  const getElementColor = function (el) {
+    const currentColorRGBA = window.getComputedStyle(el).backgroundColor
+    const currentColor = rgbaFromStr(currentColorRGBA)
+    // Ensure that the selected color is not too similar to an inactive tab color
+    const threshold = 50
+    if (currentColor !== undefined &&
+        Number(currentColor[3]) !== 0 &&
+        distance(currentColor, [199, 199, 199]) > threshold) {
+      return currentColorRGBA
+    }
+    return undefined
+  }
+  // Determines a good tab color
+  const computeThemeColor = function () {
+    // Use y = 3 to avoid hitting a border which are often gray
+    const samplePoints = [[3, 3], [window.innerWidth / 2, 3], [window.innerWidth - 3, 3]]
+    const els = []
+    for (const point of samplePoints) {
+      const el = document.elementFromPoint(point[0], point[1])
+      if (el) {
+        els.push(el)
+        if (el.parentElement) {
+          els.push(el.parentElement)
+        }
+      }
+    }
+    els.push(document.body)
+    for (const el of els) {
+      if (el !== document.documentElement && el instanceof window.Element) {
+        const themeColor = getElementColor(el)
+        if (themeColor) {
+          return themeColor
+        }
+      }
+    }
+    return undefined
+  }
+  ipcRenderer.on('post-page-load-run', function () {
     // Hide broken images
     Array.from(document.querySelectorAll('img')).forEach(function (img) {
       img.addEventListener('error', function () {
         this.style.visibility = 'hidden'
       })
+    })
+    ipcRenderer.sendToHost({
+      actionType: 'theme-color-computed',
+      themeColor: computeThemeColor()
     })
   })
 }).apply(this)

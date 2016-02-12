@@ -11,6 +11,7 @@ const Immutable = require('immutable')
 const FrameStateUtil = require('../state/frameStateUtil')
 const ipc = global.require('electron').ipcRenderer
 const messages = require('../constants/messages')
+const debounce = require('../lib/debounce.js')
 
 let windowState = Immutable.fromJS({
   activeFrameKey: null,
@@ -24,6 +25,7 @@ let windowState = Immutable.fromJS({
   },
   searchDetail: null
 })
+let lastEmittedState
 
 const CHANGE_EVENT = 'change'
 
@@ -74,11 +76,10 @@ class WindowStore extends EventEmitter {
     return windowState.get('frames').size
   }
 
-  emitChange () {
-    if (!this.suspended) {
+  emitChanges () {
+    if (lastEmittedState !== windowState) {
+      lastEmittedState = windowState
       this.emit(CHANGE_EVENT)
-    } else {
-      this.emitOnResume = true
     }
   }
 
@@ -88,26 +89,6 @@ class WindowStore extends EventEmitter {
 
   removeChangeListener (callback) {
     this.removeListener(CHANGE_EVENT, callback)
-  }
-
-  /**
-   * Temporarily suspend the emitting of change events for this store
-   * You can use this when you have multiple actions that can/should be accomplished in a single render
-   */
-  suspend () {
-    this.suspended = true
-  }
-
-  /**
-   * Resume the emitting of change events
-   * A change event will be emitted if any updates were made while the store was suspended
-   */
-  resume () {
-    this.suspended = false
-    if (this.emitOnResume) {
-      this.emitOnResume = false
-      this.emitChange()
-    }
   }
 
   /**
@@ -122,22 +103,24 @@ class WindowStore extends EventEmitter {
 }
 
 const windowStore = new WindowStore()
+const emitChanges = debounce(windowStore.emitChanges.bind(windowStore), 5)
 
 // Register callback to handle all updates
 const doAction = (action) => {
-  // console.log(action.actionType, windowState.toJS())
+  // console.log(action.actionType, action, windowState.toJS())
   switch (action.actionType) {
     case WindowConstants.WINDOW_SET_STATE:
       windowState = action.windowState
       currentKey = windowState.get('frames').reduce((previousVal, frame) => Math.max(previousVal, frame.get('key')), 0)
       currentPartitionNumber = windowState.get('frames').reduce((previousVal, frame) => Math.max(previousVal, frame.get('partitionNumber')), 0)
       // We should not emit here because the Window already know about the change on startup.
-      break
+      return
     case WindowConstants.WINDOW_SET_URL:
       // reload if the url is unchanged
       if (FrameStateUtil.getActiveFrame(windowState).get('src') === action.location) {
         windowState = windowState.mergeIn(activeFrameStatePath(), {
           audioPlaybackActive: false,
+          icon: undefined,
           activeShortcut: 'reload'
         })
       } else {
@@ -145,6 +128,7 @@ const doAction = (action) => {
           src: action.location,
           location: action.location,
           audioPlaybackActive: false,
+          icon: undefined,
           // We want theme colors reset here instead of in WINDOW_SET_LOCATION
           // because inter page navigation would make the tab color
           // blink otherwise.  The theme color will be reset eventually
@@ -155,37 +139,38 @@ const doAction = (action) => {
           title: ''
         })
       }
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_LOCATION:
       const key = action.key || windowState.get('activeFrameKey')
+      const lastLocation = windowState.getIn(frameStatePath(key).concat(['location']))
+      const lastTitle = windowState.getIn(frameStatePath(key).concat(['title']))
       windowState = windowState.mergeIn(frameStatePath(key), {
         audioPlaybackActive: false,
+        icon: undefined,
         adblock: {},
         trackingProtection: {},
+        title: action.location === lastLocation ? lastTitle : '',
         location: action.location
       })
       // Update the displayed location in the urlbar
       if (key === windowState.get('activeFrameKey')) {
         updateNavBarInput(action.location)
       }
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_NAVBAR_INPUT:
       updateNavBarInput(action.location)
-      windowStore.emitChange()
-      break
+      // Since this value is bound we need to notify the control sync
+      windowStore.emitChanges()
+      return
     case WindowConstants.WINDOW_SET_FRAME_TITLE:
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
         title: action.title
       })
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_FINDBAR_SHOWN:
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
         findbarShown: action.shown
       })
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_TAB_MANAGER_SHOWN:
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
@@ -199,26 +184,12 @@ const doAction = (action) => {
         startLoadTime: new Date().getTime(),
         endLoadTime: null
       })
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_WEBVIEW_LOAD_END:
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
         loading: false,
         endLoadTime: new Date().getTime()
       })
-      FrameStateUtil.computeThemeColor(action.frameProps).then(
-        color => {
-          windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
-            computedThemeColor: color
-          })
-          windowStore.emitChange()
-        },
-        () => {
-          windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
-            computedThemeColor: null
-          })
-          windowStore.emitChange()
-        })
       break
     case WindowConstants.WINDOW_SET_NAVBAR_FOCUSED:
       windowState = windowState.setIn(activeFrameStatePath().concat(['navbar', 'focused']), action.focused)
@@ -227,7 +198,6 @@ const doAction = (action) => {
       if (!action.focused) {
         windowState = windowState.setIn(activeFrameStatePath().concat(['navbar', 'urlbar', 'selected']), action.false)
       }
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_NEW_FRAME:
       const nextKey = incrementNextKey()
@@ -240,7 +210,6 @@ const doAction = (action) => {
       if (action.openInForeground) {
         updateTabPageIndex(FrameStateUtil.getActiveFrame(windowState))
       }
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_CLOSE_FRAME:
       // Use the frameProps we passed in, or default to the active frame
@@ -253,11 +222,9 @@ const doAction = (action) => {
       if (closingActive) {
         updateTabPageIndex(FrameStateUtil.getActiveFrame(windowState))
       }
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_UNDO_CLOSED_FRAME:
       windowState = windowState.merge(FrameStateUtil.undoCloseFrame(windowState, windowState.get('closedFrames')))
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_ACTIVE_FRAME:
       windowState = windowState.merge({
@@ -265,14 +232,12 @@ const doAction = (action) => {
         previewFrameKey: null
       })
       updateTabPageIndex(action.frameProps)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_PREVIEW_FRAME:
       windowState = windowState.merge({
         previewFrameKey: action.frameProps && action.frameProps.get('key') !== windowState.get('activeFrameKey')
           ? action.frameProps.get('key') : null
       })
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_TAB_PAGE_INDEX:
       if (action.index !== undefined) {
@@ -280,28 +245,24 @@ const doAction = (action) => {
       } else {
         updateTabPageIndex(action.frameProps)
       }
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_UPDATE_BACK_FORWARD:
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
         canGoBack: action.canGoBack,
         canGoForward: action.canGoForward
       })
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_TAB_DRAG_START:
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
         tabIsDragging: true
       })
       windowState = windowState.setIn(['ui', 'tabs', 'activeDraggedTab'], action.frameProps)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_TAB_DRAG_STOP:
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
         tabIsDragging: false
       })
       windowState = windowState.setIn(['ui', 'tabs', 'activeDraggedTab'], null)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_TAB_DRAGGING_OVER_LEFT:
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
@@ -309,7 +270,6 @@ const doAction = (action) => {
         tabIsDraggingOverLeftHalf: true,
         tabIsDraggingOverRightHalf: false
       })
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_TAB_DRAGGING_OVER_RIGHT:
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
@@ -317,7 +277,6 @@ const doAction = (action) => {
         tabIsDraggingOverLeftHalf: false,
         tabIsDraggingOverRightHalf: true
       })
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_TAB_DRAG_EXIT:
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
@@ -325,13 +284,11 @@ const doAction = (action) => {
         tabIsDraggingOverLeftHalf: false,
         tabIsDraggingOverRightHalf: false
       })
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_TAB_DRAG_EXIT_RIGHT:
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
         tabIsDraggingOverRightHalf: false
       })
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_TAB_DRAGGING_ON:
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
@@ -339,7 +296,6 @@ const doAction = (action) => {
         tabIsDraggingOverLeftHalf: false,
         tabIsDraggingOverRightHalf: false
       })
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_TAB_MOVE:
       const sourceFramePropsIndex = FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.sourceFrameProps)
@@ -350,28 +306,27 @@ const doAction = (action) => {
       }
       frames = frames.splice(newIndex, 0, action.sourceFrameProps)
       windowState = windowState.set('frames', frames)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_URL_BAR_SUGGESTIONS:
       windowState = windowState.setIn(activeFrameStatePath().concat(['navbar', 'urlbar', 'suggestions', 'selectedIndex']), action.selectedIndex)
       windowState = windowState.setIn(activeFrameStatePath().concat(['navbar', 'urlbar', 'suggestions', 'suggestionList']), action.suggestionList)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_URL_BAR_PREVIEW:
       windowState = windowState.setIn(activeFrameStatePath().concat(['navbar', 'urlbar', 'urlPreview']), action.value)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_URL_BAR_SUGGESTION_SEARCH_RESULTS:
       windowState = windowState.setIn(activeFrameStatePath().concat(['navbar', 'urlbar', 'suggestions', 'searchResults']), action.searchResults)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_THEME_COLOR:
-      windowState = windowState.setIn(frameStatePathForFrame(action.frameProps).concat(['themeColor']), action.themeColor)
-      windowStore.emitChange()
+      if (action.themeColor !== undefined) {
+        windowState = windowState.setIn(frameStatePathForFrame(action.frameProps).concat(['themeColor']), action.themeColor)
+      }
+      if (action.computedThemeColor !== undefined) {
+        windowState = windowState.setIn(frameStatePathForFrame(action.frameProps).concat(['computedThemeColor']), action.computedThemeColor)
+      }
       break
     case WindowConstants.WINDOW_SET_URL_BAR_ACTIVE:
       windowState = windowState.setIn(activeFrameStatePath().concat(['navbar', 'urlbar', 'active']), action.isActive)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_URL_BAR_SELECTED:
       const urlBarPath = activeFrameStatePath().concat(['navbar', 'urlbar'])
@@ -385,24 +340,22 @@ const doAction = (action) => {
       if (action.forSearchMode !== undefined) {
         windowState = windowState.setIn(activeFrameStatePath().concat(['navbar', 'urlbar', 'searchSuggestions']), action.forSearchMode)
       }
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_ACTIVE_FRAME_SHORTCUT:
       windowState = windowState.mergeIn(activeFrameStatePath(), {
         activeShortcut: action.activeShortcut
       })
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_SEARCH_DETAIL:
       windowState = windowState.merge({
         searchDetail: action.searchDetail
       })
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_FIND_DETAIL:
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps), 'findDetail'], action.findDetail)
-      windowStore.emitChange()
-      break
+      // Since the input value is bound we need to notify the control sync
+      windowStore.emitChanges()
+      return
     case WindowConstants.WINDOW_SET_PINNED:
       // Check if there's already a frame which is pinned.
       // If so we just want to set it as active.
@@ -420,23 +373,18 @@ const doAction = (action) => {
       windowState = windowState.merge({
         previewFrameKey: null
       })
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_AUDIO_MUTED:
       windowState = windowState.setIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps), 'audioMuted'], action.muted)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_AUDIO_PLAYBACK_ACTIVE:
       windowState = windowState.setIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps), 'audioPlaybackActive'], action.audioPlaybackActive)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_FAVICON:
       windowState = windowState.setIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps), 'icon'], action.favicon)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_MOUSE_IN_TITLEBAR:
       windowState = windowState.setIn(['ui', 'mouseInTitlebar'], action.mouseInTitlebar)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_SITE_INFO_VISIBLE:
       windowState = windowState.setIn(['ui', 'siteInfo', 'isVisible'], action.isVisible)
@@ -446,11 +394,9 @@ const doAction = (action) => {
       if (action.expandAdblock !== undefined) {
         windowState = windowState.setIn(['ui', 'siteInfo', 'expandAdblock'], action.expandAdblock)
       }
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_RELEASE_NOTES_VISIBLE:
       windowState = windowState.setIn(['ui', 'releaseNotes', 'isVisible'], action.isVisible)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_SET_SECURITY_STATE:
       if (action.securityState.secure !== undefined) {
@@ -475,7 +421,6 @@ const doAction = (action) => {
         zoomInLevel += 1
       }
       windowState = windowState.setIn(FrameStateUtil.getFramePropPath(windowState, action.frameProps, 'zoomLevel'), zoomInLevel)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_ZOOM_OUT:
       let zoomOutLevel = FrameStateUtil.getFramePropValue(windowState, action.frameProps, 'zoomLevel')
@@ -487,28 +432,41 @@ const doAction = (action) => {
         zoomOutLevel -= 1
       }
       windowState = windowState.setIn(FrameStateUtil.getFramePropPath(windowState, action.frameProps, 'zoomLevel'), zoomOutLevel)
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_ZOOM_RESET:
       windowState = windowState.setIn(FrameStateUtil.getFramePropPath(windowState, action.frameProps, 'zoomLevel'), Config.zoom.defaultValue)
-      windowStore.emitChange()
       break
     default:
   }
+
+  emitChanges()
 }
 
 WindowDispatcher.register(doAction)
 
+ipc.on(messages.LINK_HOVERED, (e, href, position) => {
+  position = position || {}
+  const nearBottom = position.y > (window.innerHeight - 150) // todo: magic number
+  const mouseOnLeft = position.x < (window.innerWidth / 2)
+  const showOnRight = nearBottom && mouseOnLeft
+
+  windowState = windowState.mergeIn(activeFrameStatePath(), {
+    hrefPreview: href,
+    showOnRight
+  })
+  windowStore.emitChanges()
+})
+
 ipc.on(messages.SHORTCUT_NEXT_TAB, () => {
   windowState = FrameStateUtil.makeNextFrameActive(windowState)
   updateTabPageIndex(FrameStateUtil.getActiveFrame(windowState))
-  windowStore.emitChange()
+  emitChanges()
 })
 
 ipc.on(messages.SHORTCUT_PREV_TAB, () => {
   windowState = FrameStateUtil.makePrevFrameActive(windowState)
   updateTabPageIndex(FrameStateUtil.getActiveFrame(windowState))
-  windowStore.emitChange()
+  emitChanges()
 })
 
 const frameShortcuts = ['stop', 'reload', 'zoom-in', 'zoom-out', 'zoom-reset', 'toggle-dev-tools', 'clean-reload', 'view-source', 'mute', 'save', 'print', 'show-findbar']
@@ -518,7 +476,7 @@ frameShortcuts.forEach(shortcut => {
     windowState = windowState.mergeIn(activeFrameStatePath(), {
       activeShortcut: shortcut
     })
-    windowStore.emitChange()
+    emitChanges()
   })
   // Listen for actions on frame N
   if (['reload', 'mute'].includes(shortcut)) {
@@ -527,7 +485,7 @@ frameShortcuts.forEach(shortcut => {
       windowState = windowState.mergeIn(path, {
         activeShortcut: shortcut
       })
-      windowStore.emitChange()
+      emitChanges()
     })
   }
 })

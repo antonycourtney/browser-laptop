@@ -10,7 +10,6 @@ const WindowActions = require('../actions/windowActions')
 const KeyCodes = require('../constants/keyCodes')
 const cx = require('../lib/classSet.js')
 const ipc = global.require('electron').ipcRenderer
-const remote = global.require('electron').remote
 
 const UrlBarSuggestions = require('./urlBarSuggestions.js')
 const messages = require('../constants/messages')
@@ -64,11 +63,6 @@ class UrlBar extends ImmutableComponent {
     WindowActions.setNavBarUserInput(location)
   }
 
-  // Whether the suggestions box is visible
-  get suggestionsShown () {
-    return this.urlBarSuggestions.shouldRender()
-  }
-
   onKeyDown (e) {
     switch (e.keyCode) {
       case KeyCodes.ENTER:
@@ -80,14 +74,14 @@ class UrlBar extends ImmutableComponent {
         } else {
           const isLocationUrl = isUrl(location)
           const searchUrl = this.searchDetail.get('searchURL').replace('{searchTerms}', location)
-          const selectedIndex = this.urlBarSuggestions.activeIndex
-          if (this.suggestionsShown && selectedIndex > 0) {
-            // load the selected suggestion
-            this.urlBarSuggestions.clickSelected()
           // If control key is pressed and input has no space in it add www. as a prefix and .com as a suffix.
           // For whitepsace we want a search no matter what.
-          } else if (!isLocationUrl && !/\s/g.test(location) && e.ctrlKey) {
+          if (!isLocationUrl && !/\s/g.test(location) && e.ctrlKey) {
             WindowActions.loadUrl(this.props.activeFrameProps, `www.${location}.com`)
+          } else if (this.shouldRenderUrlBarSuggestions && this.urlBarSuggestions.activeIndex > 0) {
+            // TODO: We shouldn't be calling into urlBarSuggestions from the parent component at all
+            // load the selected suggestion
+            this.urlBarSuggestions.clickSelected()
           } else {
             location = isLocationUrl ? location : searchUrl
             // do search.
@@ -105,20 +99,22 @@ class UrlBar extends ImmutableComponent {
         }
         break
       case KeyCodes.UP:
-        if (this.suggestionsShown) {
+        if (this.shouldRenderUrlBarSuggestions) {
+          // TODO: We shouldn't be calling into urlBarSuggestions from the parent component at all
           this.urlBarSuggestions.previousSuggestion()
           e.preventDefault()
         }
         break
       case KeyCodes.DOWN:
-        if (this.suggestionsShown) {
+        if (this.shouldRenderUrlBarSuggestions) {
+          // TODO: We shouldn't be calling into urlBarSuggestions from the parent component at all
           this.urlBarSuggestions.nextSuggestion()
           e.preventDefault()
         }
         break
       case KeyCodes.ESC:
         e.preventDefault()
-        remote.getCurrentWebContents().send(messages.SHORTCUT_ACTIVE_FRAME_STOP)
+        ipc.emit(messages.SHORTCUT_ACTIVE_FRAME_STOP)
         break
       default:
     }
@@ -134,7 +130,7 @@ class UrlBar extends ImmutableComponent {
 
   onBlur (e) {
     // if suggestion box is active then keep url bar active
-    if (!this.suggestionsShown) {
+    if (!this.shouldRenderUrlBarSuggestions) {
       WindowActions.setUrlBarActive(false)
     }
     WindowActions.setUrlBarSelected(false)
@@ -173,6 +169,11 @@ class UrlBar extends ImmutableComponent {
     this.updateDOM()
   }
 
+  get hostValue () {
+    const parsed = urlParse(this.props.activeFrameProps.get('location'))
+    return parsed.host && parsed.protocol !== 'about:' ? parsed.host : ''
+  }
+
   get titleValue () {
     // For about:newtab we don't want the top of the browser saying New Tab
     // Instead just show "Brave"
@@ -183,11 +184,6 @@ class UrlBar extends ImmutableComponent {
   get locationValue () {
     return ['about:newtab'].includes(this.props.urlbar.get('location'))
       ? '' : this.props.urlbar.get('location')
-  }
-
-  get inputValue () {
-    return this.props.titleMode
-      ? this.titleValue : this.locationValue
   }
 
   get loadTime () {
@@ -224,6 +220,11 @@ class UrlBar extends ImmutableComponent {
     WindowActions.setSiteInfoVisible(true)
   }
 
+  get shouldRenderUrlBarSuggestions () {
+    return (this.props.urlbar.get('location') || this.props.urlbar.get('urlPreview')) &&
+      this.props.urlbar.get('active')
+  }
+
   render () {
     return <form
       action='#'
@@ -242,7 +243,9 @@ class UrlBar extends ImmutableComponent {
             extendedValidation: this.extendedValidationSSL
           })}/>
         <div id='titleBar'>
-          {this.titleValue}
+          <span><strong>{this.hostValue}</strong></span>
+          <span>{this.hostValue && this.titleValue ? ' | ' : ''}</span>
+          <span>{this.titleValue}</span>
         </div>
         </div>
       <input type='text'
@@ -253,7 +256,7 @@ class UrlBar extends ImmutableComponent {
         onChange={this.onChange.bind(this)}
         onClick={this.onClick.bind(this)}
         onContextMenu={contextMenus.onUrlBarContextMenu.bind(this)}
-        value={this.inputValue}
+        value={this.locationValue}
         data-l10n-id='urlbar'
         className={cx({
           insecure: !this.secure && this.props.loading === false && !this.isHTTPPage,
@@ -265,7 +268,8 @@ class UrlBar extends ImmutableComponent {
         ref={node => this.urlInput = node}/>
         { !this.props.titleMode
           ? <span className='loadTime'>{this.loadTime}</span> : null }
-        <UrlBarSuggestions
+        { this.shouldRenderUrlBarSuggestions
+        ? <UrlBarSuggestions
           ref={node => this.urlBarSuggestions = node}
           suggestions={this.props.urlbar.get('suggestions')}
           settings={this.props.settings}
@@ -276,8 +280,7 @@ class UrlBar extends ImmutableComponent {
           activeFrameProps={this.props.activeFrameProps}
           urlLocation={this.props.urlbar.get('location')}
           urlPreview={this.props.urlbar.get('urlPreview')}
-          urlActive={this.props.urlbar.get('active')}
-          previewActiveIndex={this.props.previewActiveIndex || 0} />
+          previewActiveIndex={this.props.previewActiveIndex || 0} /> : null }
       </form>
   }
 }

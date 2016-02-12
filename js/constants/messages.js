@@ -48,9 +48,12 @@ const messages = {
   // Webview page messages
   SET_AD_DIV_CANDIDATES: _, /** @arg {Array} adDivCandidates, @arg {string} placeholderUrl */
   CONTEXT_MENU_OPENED: _, /** @arg {Object} nodeProps properties of node being clicked */
+  LINK_HOVERED: _, /** @arg {string} href of hovered link */
   APP_STATE_CHANGE: _,
   APP_ACTION: _,
   STOP_LOAD: _,
+  POST_PAGE_LOAD_RUN: _,
+  THEME_COLOR_COMPUTED: _,
   // Init
   INIT_WINODW: _,
   // Session restore

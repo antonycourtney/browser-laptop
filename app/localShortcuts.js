@@ -17,11 +17,9 @@ module.exports.register = (win) => {
     ['CmdOrCtrl+Shift+[', messages.SHORTCUT_PREV_TAB],
     ['CmdOrCtrl+Alt+Right', messages.SHORTCUT_NEXT_TAB],
     ['CmdOrCtrl+Alt+Left', messages.SHORTCUT_PREV_TAB],
-    ['CmdOrCtrl+Alt+Right', messages.SHORTCUT_NEXT_TAB],
-    ['CmdOrCtrl+Alt+Left', messages.SHORTCUT_PREV_TAB],
-    ['CmdOrCtrl+9', messages.SHORTCUT_SET_ACTIVE_FRAME_TO_LAST],
-    ['CmdOrCtrl+Left', messages.SHORTCUT_ACTIVE_FRAME_BACK],
-    ['CmdOrCtrl+Right', messages.SHORTCUT_ACTIVE_FRAME_FORWARD]
+    ['Ctrl+PageDown', messages.SHORTCUT_NEXT_TAB],
+    ['Ctrl+PageUp', messages.SHORTCUT_PREV_TAB],
+    ['CmdOrCtrl+9', messages.SHORTCUT_SET_ACTIVE_FRAME_TO_LAST]
   ]
 
   if (process.platform === 'win32') {

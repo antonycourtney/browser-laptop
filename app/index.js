@@ -16,7 +16,7 @@ const app = electron.app
 const Menu = require('./menu')
 const Updater = require('./updater')
 const messages = require('../js/constants/messages')
-const AppActions = require('../js/actions/appActions')
+const appActions = require('../js/actions/appActions')
 const SessionStore = require('./sessionStore')
 const AppStore = require('../js/stores/appStore')
 const CrashHerald = require('./crash-herald')
@@ -38,6 +38,11 @@ let perWindowState = []
 let sessionStateStoreAttempted = false
 
 const saveIfAllCollected = () => {
+  // If we're shutting down early and can't access the state, it's better
+  // to not try to save anything at all and just quit.
+  if (!AppStore.getState()) {
+    app.exit(0)
+  }
   if (perWindowState.length === BrowserWindow.getAllWindows().length) {
     const appState = AppStore.getState().toJS()
     appState.perWindowState = perWindowState
@@ -81,7 +86,7 @@ app.on('ready', function () {
   app.on('activate', function () {
     // (OS X) open a new window when the user clicks on the app icon if there aren't any open
     if (BrowserWindow.getAllWindows().length === 0) {
-      AppActions.newWindow()
+      appActions.newWindow()
     }
   })
 
@@ -111,22 +116,22 @@ app.on('ready', function () {
     const perWindowState = initialState.perWindowState
 
     delete initialState.perWindowState
-    AppActions.setState(Immutable.fromJS(initialState))
+    appActions.setState(Immutable.fromJS(initialState))
     return perWindowState
   }).then(perWindowState => {
     if (!perWindowState || perWindowState.length === 0) {
       if (!CmdLine.newWindowURL) {
-        AppActions.newWindow()
+        appActions.newWindow()
       }
     } else {
       perWindowState.forEach(wndState => {
-        AppActions.newWindow(undefined, undefined, wndState)
+        appActions.newWindow(undefined, undefined, wndState)
       })
     }
     process.emit(messages.APP_INITIALIZED)
 
     if (CmdLine.newWindowURL) {
-      AppActions.newWindow(Immutable.fromJS({
+      appActions.newWindow(Immutable.fromJS({
         location: CmdLine.newWindowURL
       }))
     }
@@ -141,6 +146,21 @@ app.on('ready', function () {
 
     ipcMain.on(messages.CONTEXT_MENU_OPENED, (e, nodeName) => {
       BrowserWindow.getFocusedWindow().webContents.send(messages.CONTEXT_MENU_OPENED, nodeName)
+    })
+
+    ipcMain.on(messages.LINK_HOVERED, (e, href, position) => {
+      const browserWindow = BrowserWindow.getFocusedWindow()
+      if (browserWindow) {
+        BrowserWindow.getFocusedWindow().webContents.send(messages.LINK_HOVERED, href, position)
+      } else {
+        BrowserWindow.getAllWindows().map(win => {
+          win.webContents.send(messages.LINK_HOVERED, href)
+        })
+      }
+    })
+
+    ipcMain.on(messages.CHANGE_SETTING, (e, key, value) => {
+      appActions.changeSetting(key, value)
     })
 
     ipcMain.on(messages.STOP_LOAD, () => {

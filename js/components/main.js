@@ -10,7 +10,6 @@ const ipc = electron.ipcRenderer
 
 // Actions
 const WindowActions = require('../actions/windowActions')
-const AppActions = require('../actions/appActions')
 const loadOpenSearch = require('../lib/openSearch').loadOpenSearch
 const contextMenus = require('../contextMenus')
 const getSetting = require('../settings').getSetting
@@ -34,7 +33,14 @@ const settings = require('../constants/settings')
 // State handling
 const FrameStateUtil = require('../state/frameStateUtil')
 
+// Util
+const cx = require('../lib/classSet.js')
+
 class Main extends ImmutableComponent {
+  constructor () {
+    super()
+    this.onCloseFrame = this.onCloseFrame.bind(this)
+  }
   registerSwipeListener () {
     // Navigates back/forward on OS X two-finger swipe
     var trackingFingers = false
@@ -48,7 +54,6 @@ class Main extends ImmutableComponent {
         deltaY = deltaY + e.deltaY
       }
     })
-
     ipc.on('scroll-touch-begin', function () {
       trackingFingers = true
       startTime = (new Date()).getTime()
@@ -59,19 +64,15 @@ class Main extends ImmutableComponent {
       var yVelocity = deltaY / time
       if (trackingFingers && Math.abs(yVelocity) < 1) {
         if (xVelocity > 4) {
-          electron.remote.getCurrentWebContents().send(messages.SHORTCUT_ACTIVE_FRAME_FORWARD)
+          ipc.emit(messages.SHORTCUT_ACTIVE_FRAME_FORWARD)
         } else if (xVelocity < -4) {
-          electron.remote.getCurrentWebContents().send(messages.SHORTCUT_ACTIVE_FRAME_BACK)
+          ipc.emit(messages.SHORTCUT_ACTIVE_FRAME_BACK)
         }
       }
       trackingFingers = false
       deltaX = 0
       deltaY = 0
       startTime = 0
-    })
-
-    ipc.on(messages.CHANGE_SETTING, function (e, key, value) {
-      AppActions.changeSetting(key, value)
     })
   }
 
@@ -90,7 +91,7 @@ class Main extends ImmutableComponent {
   componentDidMount () {
     this.registerSwipeListener()
     ipc.on(messages.STOP_LOAD, () => {
-      electron.remote.getCurrentWebContents().send(messages.SHORTCUT_ACTIVE_FRAME_STOP)
+      ipc.emit(messages.SHORTCUT_ACTIVE_FRAME_STOP)
     })
     ipc.on(messages.CONTEXT_MENU_OPENED, (e, nodeProps) => {
       contextMenus.onMainContextMenu(nodeProps)
@@ -110,9 +111,7 @@ class Main extends ImmutableComponent {
         isPrivate: !!options.isPrivate,
         isPartitioned: !!options.isPartitioned
       }, openInForeground)
-
-      // Focus URL bar when adding tab via shortcut
-      electron.remote.getCurrentWebContents().send(messages.SHORTCUT_FOCUS_URL)
+      ipc.emit(messages.SHORTCUT_FOCUS_URL)
     })
 
     ipc.on(messages.SHORTCUT_CLOSE_FRAME, (e, i) => typeof i !== 'undefined'
@@ -207,6 +206,10 @@ class Main extends ImmutableComponent {
     return enabled
   }
 
+  onCloseFrame (activeFrameProps) {
+    WindowActions.closeFrame(this.props.windowState.get('frames'), this.props.frame)
+  }
+
   render () {
     const comparatorByKeyAsc = (a, b) => a.get('key') > b.get('key')
       ? 1 : b.get('key') > a.get('key') ? -1 : 0
@@ -222,52 +225,61 @@ class Main extends ImmutableComponent {
     this.frames = {}
     const settingsState = this.props.appState.get('settings') || new Immutable.Map()
     const nonPinnedFrames = this.props.windowState.get('frames').filter(frame => !frame.get('isPinned'))
+    const tabsPerPage = getSetting(settingsState, settings.TABS_PER_TAB_PAGE)
     return <div id='window' ref={node => this.mainWindow = node}>
       <div className='top'>
-        <div className='backforward'>
-          <span
-            className='back fa fa-angle-left'
-            disabled={!activeFrame || !activeFrame.get('canGoBack')}
-            onClick={this.onBack.bind(this)} />
-          <span
-            className='forward fa fa-angle-right'
-            disabled={!activeFrame || !activeFrame.get('canGoForward')}
-            onClick={this.onForward.bind(this)} />
+        <div className='navigator-wrapper'>
+          <div className='backforward'>
+            <span
+              className='back fa fa-angle-left'
+              disabled={!activeFrame || !activeFrame.get('canGoBack')}
+              onClick={this.onBack.bind(this)} />
+            <span
+              className='forward fa fa-angle-right'
+              disabled={!activeFrame || !activeFrame.get('canGoForward')}
+              onClick={this.onForward.bind(this)} />
+          </div>
+          <NavigationBar
+            ref={node => this.navBar = node}
+            navbar={activeFrame && activeFrame.get('navbar')}
+            frames={this.props.windowState.get('frames')}
+            sites={this.props.appState.get('sites')}
+            activeFrame={activeFrame}
+            mouseInTitlebar={this.props.windowState.getIn(['ui', 'mouseInTitlebar'])}
+            searchSuggestions={activeFrame && activeFrame.getIn(['navbar', 'urlbar', 'searchSuggestions'])}
+            settings={settingsState}
+            searchDetail={this.props.windowState.get('searchDetail')}
+          />
+          { this.props.windowState.getIn(['ui', 'siteInfo', 'isVisible'])
+            ? <SiteInfo frameProps={activeFrame}
+                siteInfo={this.props.windowState.getIn(['ui', 'siteInfo'])}
+                onHide={this.onHideSiteInfo.bind(this)} /> : null
+          }
+          { this.props.windowState.getIn(['ui', 'releaseNotes', 'isVisible'])
+            ? <ReleaseNotes
+                metadata={this.props.appState.getIn(['updates', 'metadata'])}
+                onHide={this.onHideReleaseNotes.bind(this)} /> : null
+          }
+          <div className='topLevelEndButtons'>
+            <Button iconClass='braveMenu'
+              className='navbutton'
+              onClick={this.onBraveMenu.bind(this)} />
+          </div>
         </div>
-        <NavigationBar
-          ref={node => this.navBar = node}
-          navbar={activeFrame && activeFrame.get('navbar')}
-          frames={this.props.windowState.get('frames')}
-          sites={this.props.appState.get('sites')}
-          activeFrame={activeFrame}
-          mouseInTitlebar={this.props.windowState.getIn(['ui', 'mouseInTitlebar'])}
-          searchSuggestions={activeFrame && activeFrame.getIn(['navbar', 'urlbar', 'searchSuggestions'])}
-          settings={settingsState}
-          searchDetail={this.props.windowState.get('searchDetail')}
-        />
-        { this.props.windowState.getIn(['ui', 'siteInfo', 'isVisible'])
-          ? <SiteInfo frameProps={activeFrame}
-              siteInfo={this.props.windowState.getIn(['ui', 'siteInfo'])}
-              onHide={this.onHideSiteInfo.bind(this)} /> : null
-        }
-        { this.props.windowState.getIn(['ui', 'releaseNotes', 'isVisible'])
-          ? <ReleaseNotes
-              metadata={this.props.appState.getIn(['updates', 'metadata'])}
-              onHide={this.onHideReleaseNotes.bind(this)} /> : null
-        }
-        <div className='topLevelEndButtons'>
-          <Button iconClass='braveMenu'
-            className='navbutton'
-            onClick={this.onBraveMenu.bind(this)} />
+        <div className={cx({
+          tabPages: true,
+          singlePage: nonPinnedFrames.size <= tabsPerPage
+        })}>
+          { nonPinnedFrames.size > tabsPerPage
+            ? <TabPages frames={nonPinnedFrames}
+                tabsPerTabPage={tabsPerPage}
+                tabPageIndex={this.props.windowState.getIn(['ui', 'tabs', 'tabPageIndex'])}
+              /> : null }
         </div>
-        <TabPages frames={nonPinnedFrames}
-          tabsPerTabPage={getSetting(settingsState, settings.TABS_PER_TAB_PAGE)}
-          tabPageIndex={this.props.windowState.getIn(['ui', 'tabs', 'tabPageIndex'])}
-        />
         <TabsToolbar
           paintTabs={getSetting(settingsState, settings.PAINT_TABS)}
           previewTabs={getSetting(settingsState, settings.SHOW_TAB_PREVIEWS)}
-          tabsPerTabPage={getSetting(settingsState, settings.TABS_PER_TAB_PAGE)}
+          tabsPerTabPage={tabsPerPage}
           tabs={this.props.windowState.getIn(['ui', 'tabs'])}
           frames={this.props.windowState.get('frames')}
           sites={this.props.appState.get('sites')}
@@ -286,7 +298,7 @@ class Main extends ImmutableComponent {
             <Frame
               ref={node => this.frames[frame.get('key')] = node}
               prefOpenInForeground={getSetting(settingsState, settings.SWITCH_TO_NEW_TABS)}
-              frames={this.props.windowState.get('frames')}
+              onCloseFrame={this.onCloseFrame}
               frame={frame}
               key={frame.get('key')}
               settings={settingsState || new Immutable.Map()}

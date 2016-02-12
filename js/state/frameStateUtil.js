@@ -4,7 +4,6 @@
 
 import Immutable from 'immutable'
 import Config from '../constants/config.js'
-const getFavicon = require('../lib/faviconUtil.js')
 
 export function isFrameKeyActive (windowState, frameKey) {
   return windowState.get('activeFrameKey') === frameKey
@@ -237,9 +236,12 @@ export function removeFrame (frames, closedFrames, frameProps, activeFrameKey) {
       closedFrames = closedFrames.shift()
     }
   }
-  const activeFrameIndex = findIndexForFrameKey(frames, frameProps.get('parentFrameKey')) ||
-    findIndexForFrameKey(frames, activeFrameKey)
+  let activeFrameIndex = findIndexForFrameKey(frames, frameProps.get('parentFrameKey'))
+  if (activeFrameIndex === -1) {
+    activeFrameIndex = findIndexForFrameKey(frames, activeFrameKey)
+  }
   const framePropsIndex = getFramePropsIndex(frames, frameProps)
+  frames = frames.splice(framePropsIndex, 1)
   const newActiveFrameKey = frameProps.get('key') === activeFrameKey && frames.size > 0
     ? Math.max(
       frames.get(activeFrameIndex)
@@ -248,9 +250,8 @@ export function removeFrame (frames, closedFrames, frameProps, activeFrameKey) {
       // Otherwise go to the frame right before the active tab.
       : frames.get(activeFrameIndex - 1).get('key'),
     0) : activeFrameKey
-  frames = frames.splice(framePropsIndex, 1)
   return {
-    previewFrameKey: undefined,
+    previewFrameKey: null,
     activeFrameKey: newActiveFrameKey,
     closedFrames,
     frames
@@ -276,35 +277,6 @@ export function removeOtherFrames (frames, closedFrames, frameProps) {
     closedFrames,
     frames
   }
-}
-
-/**
- * Extracts theme-color from a favicon using vibrant.js.
- */
-export function computeThemeColor (frameProps) {
-  return new Promise((resolve, reject) => {
-    const icon = getFavicon(frameProps)
-    const img = new window.Image()
-    img.src = icon
-
-    img.onload = () => {
-      const vibrant = new window.Vibrant(img)
-      const swatches = vibrant.swatches()
-
-      // Arbitrary selection ordering, which appears to give decent results.
-      const swatchOrder = ['Vibrant', 'DarkVibrant', 'LightVibrant', 'Muted', 'LightMuted', 'DarkMuted']
-      for (let i = 0; i < swatchOrder.length; i++) {
-        const swatch = swatchOrder[i]
-        if (swatches[swatch]) {
-          resolve(swatches[swatch].getHex())
-          break
-        }
-      }
-    }
-    img.onerror = () => {
-      reject(new Error('Could not render image from blob.'))
-    }
-  })
 }
 
 export function getFrameTabPageIndex (frames, frameProps, tabsPerTabPage) {
