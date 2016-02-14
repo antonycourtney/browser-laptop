@@ -176,7 +176,6 @@ const doAction = (action) => {
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
         tabManagerShown: action.shown
       })
-      windowStore.emitChange()
       break
     case WindowConstants.WINDOW_WEBVIEW_LOAD_START:
       windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {

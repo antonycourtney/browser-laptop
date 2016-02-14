@@ -28,6 +28,9 @@ const HttpsEverywhere = require('./httpsEverywhere')
 const SiteHacks = require('./siteHacks')
 const CmdLine = require('./cmdLine')
 const UpdateStatus = require('../js/constants/updateStatus')
+const IpcMux = require('./ipcMuxMain')
+
+const requestWindowState = IpcMux.Requester(messages.REQUEST_WINDOW_STATE, messages.RESPONSE_WINDOW_STATE)
 
 let loadAppStatePromise = SessionStore.loadAppState().catch(() => {
   return SessionStore.defaultAppState()
@@ -97,14 +100,16 @@ app.on('ready', function () {
     }
 
     e.preventDefault()
-    BrowserWindow.getAllWindows().forEach(win => win.webContents.send(messages.REQUEST_WINDOW_STATE))
-  })
 
-  ipcMain.on(messages.RESPONSE_WINDOW_STATE, (wnd, data) => {
-    if (data) {
-      perWindowState.push(data)
+    const quitWindowStateHandler = (err, event, data) => {
+      if (err) throw new Error('error gathering window state before quit')
+      if (data) {
+        perWindowState.push(data)
+      }
+      saveIfAllCollected()
     }
-    saveIfAllCollected()
+
+    BrowserWindow.getAllWindows().forEach(win => requestWindowState(win, quitWindowStateHandler))
   })
 
   loadAppStatePromise.then(initialState => {

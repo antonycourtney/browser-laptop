@@ -9,6 +9,7 @@ const electron = global.require('electron')
 const ipc = electron.ipcRenderer
 
 // Actions
+const AppActions = require('../actions/appActions')
 const WindowActions = require('../actions/windowActions')
 const loadOpenSearch = require('../lib/openSearch').loadOpenSearch
 const contextMenus = require('../contextMenus')
@@ -181,6 +182,7 @@ class Main extends ImmutableComponent {
   }
 
   onTabManagerPopup () {
+    AppActions.openTabManager()
     const activeFrame = FrameStateUtil.getActiveFrame(this.props.windowState)
     WindowActions.setTabManagerShown(activeFrame, true)
   }

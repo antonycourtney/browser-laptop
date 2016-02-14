@@ -21,6 +21,7 @@ const dates = require('../../app/dates')
 const path = require('path')
 const getSetting = require('../settings').getSetting
 const debounce = require('../lib/debounce.js')
+const IpcMux = require('../../app/ipcMuxMain')
 
 let appState
 let lastEmittedState
@@ -34,6 +35,20 @@ function isModal (browserOpts) {
 function navbarHeight () {
   // TODO there has to be a better way to get this or at least add a test
   return 75
+}
+
+const requestWindowState = IpcMux.Requester(messages.REQUEST_WINDOW_STATE, messages.RESPONSE_WINDOW_STATE)
+
+const openTabManager = () => {
+  const allWindows = BrowserWindow.getAllWindows()
+  /* BrowserWindow.getAllWindows().forEach(win => ) */
+  const win = allWindows[0]
+  requestWindowState(win, (err, event, data) => {
+    if (err) {
+      return
+    }
+    console.log('openTabManager: window state: ', data)
+  })
 }
 
 const createWindow = (browserOpts, defaults) => {
@@ -288,6 +303,9 @@ const handleAppAction = (action) => {
       break
     case AppConstants.APP_CHANGE_SETTING:
       appState = appState.setIn(['settings', action.key], action.value)
+      break
+    case AppConstants.APP_OPEN_TAB_MANAGER:
+      openTabManager()
       break
     default:
   }

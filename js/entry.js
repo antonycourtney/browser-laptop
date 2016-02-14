@@ -20,6 +20,7 @@ const Window = require('./components/window')
 const ipc = global.require('electron').ipcRenderer
 const WindowStore = require('./stores/windowStore')
 const messages = require('./constants/messages')
+const IpcMux = require('./ipcMuxRenderer')
 
 // get appStore from url
 ipc.on(messages.INIT_WINODW, (e, appState, frames, initWindowState) => {
@@ -28,6 +29,7 @@ ipc.on(messages.INIT_WINODW, (e, appState, frames, initWindowState) => {
     document.getElementById('windowContainer'))
 })
 
-ipc.on(messages.REQUEST_WINDOW_STATE, () => {
-  ipc.send(messages.RESPONSE_WINDOW_STATE, WindowStore.getState().toJS())
+// respond to requests for window state
+IpcMux.Responder(messages.REQUEST_WINDOW_STATE, messages.RESPONSE_WINDOW_STATE, (...args) => {
+  return WindowStore.getState().toJS()
 })
