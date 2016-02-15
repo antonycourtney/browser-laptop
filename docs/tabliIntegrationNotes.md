@@ -11,6 +11,10 @@ The entry point for the UI is an additional `Button` added to the `TabsToolbar`.
 The popup window itself is `TabManagerPopup` (`components/TabManagerPopup.js`). Following the model of the `FindBar` component, this is realized as a fixed `div` with absolute size and positioning created
 by the `Frame` component (`components/frame.js`).  Modal effect achieved by nesting the popup div in a invisible (alpha of 0.0) `div` that covers the entire window.
 
+***TODO/FIXME: The TabManagerPopup should probably move to Main, since Frame is really a single tab.***
+Note:  Looks like the windowStore code is setting tabManagerShown (and presumably tabManagerWindowStates) on the frame, which is also almost certainly not what we want.
+
+
 Visbility of the `TabManagerPopup` controlled by `tabManagerShown` property of frame state (see [state.md](state.md) ).  [**TODO**: `FindBar` component now non-existent when not shown instead of using `active` property controlling visibility. Follow same approach for `TabManagerPopup`? ]
 
 Top-level callbacks / actions:
@@ -19,6 +23,8 @@ Top-level callbacks / actions:
   - Action: `WindowActions.setTabManagerShown` 
   - Handler: `stores/WindowStore.js` (WINDOW_SET_TAB_MANAGER_SHOWN)
     (just sets the tabManagerShown prop of the frame state)
+
+
 
 # Gathering Window State
 

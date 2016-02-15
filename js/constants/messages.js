@@ -63,7 +63,9 @@ const messages = {
   BLOCKED_RESOURCE: _,
   // SETTINGS
   SETTINGS_UPDATED: _,
-  CHANGE_SETTING: _
+  CHANGE_SETTING: _,
+  // finish opening tab manager
+  TAB_MANAGER_RENDER: _
 }
 
 module.exports = mapValuesByKeys(messages)

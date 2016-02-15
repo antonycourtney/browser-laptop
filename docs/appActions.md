@@ -134,6 +134,13 @@ Changes an application level setting
 
 
 
+### openTabManager() 
+
+Dispatches an event to the main process to gather tab state
+from all window and open tab manager
+
+
+
 
 * * *
 

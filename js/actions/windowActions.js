@@ -154,14 +154,14 @@ const WindowActions = {
 
   /**
    * Shows/hides the tab Manager popup.
-   * @param {Object} frameProps - The frame properties to modify
    * @param {boolean} shown - Whether to show the popup
+   * @param {array} windowStates - array of enriched windowStates for all windows from main proc
    */
-  setTabManagerShown: function (frameProps, shown) {
+  setTabManagerShown: function (shown, windowStates) {
     WindowDispatcher.dispatch({
       actionType: WindowConstants.WINDOW_SET_TAB_MANAGER_SHOWN,
-      frameProps,
-      shown
+      shown,
+      windowStates
     })
   },
 

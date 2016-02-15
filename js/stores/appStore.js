@@ -39,15 +39,30 @@ function navbarHeight () {
 
 const requestWindowState = IpcMux.Requester(messages.REQUEST_WINDOW_STATE, messages.RESPONSE_WINDOW_STATE)
 
-const openTabManager = () => {
-  const allWindows = BrowserWindow.getAllWindows()
-  /* BrowserWindow.getAllWindows().forEach(win => ) */
-  const win = allWindows[0]
-  requestWindowState(win, (err, event, data) => {
-    if (err) {
-      return
-    }
-    console.log('openTabManager: window state: ', data)
+/**
+ * gather window state from all open windows
+ *
+ * @param {function} callback - callback passed array of windowState objects
+ */
+const getAllWindowState = (callback) => {
+  // array used to collect window states
+  let windowStates = []
+
+  BrowserWindow.getAllWindows().forEach(win => {
+    requestWindowState(win, (err, event, data) => {
+      if (err) {
+        console.error('unexpected error gathering window state: ', err)
+        return
+      }
+      console.log('getAllWindowState: got window state for window ', win.id)
+      // add Electron window id and focused flag to window state:
+      data.id = win.id
+      data.focused = win.isFocused()
+      windowStates.push(data)
+      if (windowStates.length === BrowserWindow.getAllWindows().length) {
+        callback(windowStates)
+      }
+    })
   })
 }
 
@@ -305,7 +320,11 @@ const handleAppAction = (action) => {
       appState = appState.setIn(['settings', action.key], action.value)
       break
     case AppConstants.APP_OPEN_TAB_MANAGER:
-      openTabManager()
+      const activeWindow = BrowserWindow.fromId(action.appWindowId)
+      getAllWindowState(windowStates => {
+        console.log('openTabManager: got window states: ', windowStates)
+        activeWindow.webContents.send(messages.TAB_MANAGER_RENDER, windowStates)
+      })
       break
     default:
   }

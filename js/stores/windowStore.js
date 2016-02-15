@@ -3,6 +3,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 const Config = require('../constants/config').default
+const WindowActions = require('../actions/windowActions')
 const WindowDispatcher = require('../dispatcher/windowDispatcher')
 const EventEmitter = require('events').EventEmitter
 const WindowConstants = require('../constants/windowConstants')
@@ -23,7 +24,9 @@ let windowState = Immutable.fromJS({
     },
     mouseInTitlebar: false
   },
-  searchDetail: null
+  searchDetail: null,
+  tabManagerShown: false,
+  tabManagerWindowStates: []
 })
 let lastEmittedState
 
@@ -173,8 +176,9 @@ const doAction = (action) => {
       })
       break
     case WindowConstants.WINDOW_SET_TAB_MANAGER_SHOWN:
-      windowState = windowState.mergeIn(['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps)], {
-        tabManagerShown: action.shown
+      windowState = windowState.merge({
+        tabManagerShown: action.shown,
+        tabManagerWindowStates: action.windowStates
       })
       break
     case WindowConstants.WINDOW_WEBVIEW_LOAD_START:
@@ -468,6 +472,9 @@ ipc.on(messages.SHORTCUT_PREV_TAB, () => {
   emitChanges()
 })
 
+ipc.on(messages.TAB_MANAGER_RENDER, (e, windowStates) => {
+  WindowActions.setTabManagerShown(true, windowStates)
+})
 const frameShortcuts = ['stop', 'reload', 'zoom-in', 'zoom-out', 'zoom-reset', 'toggle-dev-tools', 'clean-reload', 'view-source', 'mute', 'save', 'print', 'show-findbar']
 frameShortcuts.forEach(shortcut => {
   // Listen for actions on the active frame

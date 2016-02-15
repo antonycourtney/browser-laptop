@@ -98,15 +98,15 @@ Shows/hides the find-in-page bar.
 
 
 
-### setTabManagerShown(frameProps, shown) 
+### setTabManagerShown(shown, windowStates) 
 
 Shows/hides the tab Manager popup.
 
 **Parameters**
 
-**frameProps**: `Object`, The frame properties to modify
-
 **shown**: `boolean`, Whether to show the popup
+
+**windowStates**: `array`, array of enriched windowStates for all windows from main proc
 
 
 

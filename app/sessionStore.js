@@ -136,6 +136,10 @@ module.exports.cleanSessionData = (sessionData) => {
   if (sessionData.frames) {
     sessionData.frames.forEach(cleanFrame)
   }
+
+  // clean up / initialize tabManager state
+  sessionData.tabManagerShown = false
+  sessionData.tabManagerWindowStates = []
 }
 
 /**

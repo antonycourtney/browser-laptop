@@ -12,62 +12,65 @@ const TabWindow = Tabli.TabWindow
 const TabManagerState = Tabli.TabManagerState
 const Popup = Tabli.components.Popup
 
-const remote = global.require('electron').remote
-const fs = remote.require('fs')
-
-var mockWinStore = null
-
-const testStatePath = '/Users/antony/home/src/chrome-extensions/tabli/build/testData/winSnap.json'
-
-// make a TabWindow from its JSON
-// Only needed for static test!
-function makeTabWindow (jsWin) {
-  const decItems = jsWin.tabItems.map((tiFields) => new TabWindow.TabItem(tiFields))
-
-  const itemWin = Object.assign({}, jsWin, { tabItems: Immutable.Seq(decItems) })
-
-  const decWin = new TabWindow.TabWindow(itemWin)
-  return decWin
+/**
+ * construct a Tabli TabItem from a Brave frameState
+ */
+function makeOpenTabItem (ws, fs) {
+  const fsUrl = fs.get('location')
+  const fsTitle = fs.get('title')
+  const tabItem = new TabWindow.TabItem({
+    url: fsUrl,
+    audible: fs.get('audioPlaybackActive'),
+    favIconUrl: fs.get('icon'),
+    open: true,
+    tabTitle: (fsTitle && fsTitle.length > 0) ? fsTitle : fsUrl,
+    openTabId: fs.get('key'),  // probably also need window id
+    active: ws.get('activeFrameKey') === fs.get('key'),
+    openTabIndex: fs.get('key')
+  })
+  return tabItem
 }
 
-export default class TabManagerPopup extends ImmutableComponent {
+/**
+ * Initialize a TabWindow from a Brave window state
+ */
+export function makeBraveTabWindow (windowState) {
+  const tabItems = windowState.get('frames').map(fs => makeOpenTabItem(windowState, fs))
+  const tabWindow = new TabWindow.TabWindow({
+    open: true,
+    openWindowId: windowState.get('id'),
+    focused: windowState.get('focused'),
+    tabItems: Immutable.Seq(tabItems)
+  })
+  return tabWindow
+}
+
+class TabManagerPopup extends ImmutableComponent {
   constructor () {
     super()
   }
 
   handleClick (e) {
-    console.log('clicky!')
     e.stopPropagation()
-  }
-
-  componentWillMount () {
-    console.log('componentWillMount: fs: ', fs)
-    const testDataStr = fs.readFileSync(testStatePath)
-    const testData = JSON.parse(testDataStr)
-    console.log('read test data: ', testData)
-
-    console.log('Tabli: ', Tabli)
-
-    const allWindows = testData.allWindows
-    const tabWindows = allWindows.map(makeTabWindow)
-
-    var emptyWinStore = new TabManagerState()
-
-    mockWinStore = emptyWinStore.registerTabWindows(tabWindows)
-    console.log('Created mockWinStore and registered test windows')
-    console.log('mock winStore: ', mockWinStore.toJS())
   }
 
   render () {
     if (!this.props.active) {
       return null
     }
+
+    const tabWindows = this.props.windowStates.map(makeBraveTabWindow).toArray()
+
+    const winStore = new TabManagerState().registerTabWindows(tabWindows)
+
     return (
       <div className='tabManagerOverlay' onClick={this.props.onHide}>
         <div className='tabManagerPopup' onClick={this.handleClick}>
-          <Popup storeRef={null} initialWinStore={mockWinStore} noListener />
+          <Popup storeRef={null} initialWinStore={winStore} noListener />
         </div>
       </div>
       )
   }
 }
+
+module.exports = TabManagerPopup

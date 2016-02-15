@@ -168,9 +168,10 @@ const AppActions = {
    * Dispatches an event to the main process to gather tab state
    * from all window and open tab manager
    */
-  openTabManager: function () {
+  openTabManager: function (appWindowId) {
     AppDispatcher.dispatch({
-      actionType: AppConstants.APP_OPEN_TAB_MANAGER
+      actionType: AppConstants.APP_OPEN_TAB_MANAGER,
+      appWindowId
     })
   }
 }

@@ -7,6 +7,7 @@ const ImmutableComponent = require('./immutableComponent')
 const Immutable = require('immutable')
 const electron = global.require('electron')
 const ipc = electron.ipcRenderer
+const remote = electron.remote
 
 // Actions
 const AppActions = require('../actions/appActions')
@@ -30,6 +31,7 @@ const Config = require('../constants/config')
 const AppConfig = require('../constants/appConfig')
 const messages = require('../constants/messages')
 const settings = require('../constants/settings')
+const TabManagerPopup = require('./tabManagerPopup.js')
 
 // State handling
 const FrameStateUtil = require('../state/frameStateUtil')
@@ -182,9 +184,11 @@ class Main extends ImmutableComponent {
   }
 
   onTabManagerPopup () {
-    AppActions.openTabManager()
-    const activeFrame = FrameStateUtil.getActiveFrame(this.props.windowState)
-    WindowActions.setTabManagerShown(activeFrame, true)
+    AppActions.openTabManager(remote.getCurrentWindow().id)
+  }
+
+  onTabManagerHide () {
+    WindowActions.setTabManagerShown(this.props.frame, false)
   }
 
   onMainFocus () {
@@ -294,6 +298,12 @@ class Main extends ImmutableComponent {
       </div>
       <div className='mainContainer'
         onFocus={this.onMainFocus.bind(this)}>
+        <TabManagerPopup
+          ref='tabManagerPopup'
+          active={this.props.windowState.get('tabManagerShown')}
+          windowStates={this.props.windowState.get('tabManagerWindowStates')}
+          onHide={this.onTabManagerHide.bind(this)}
+        />
         <div className='tabContainer'>
         {
           sortedFrames.map(frame =>
