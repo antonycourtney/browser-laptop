@@ -141,6 +141,19 @@ from all window and open tab manager
 
 
 
+### showWindow() 
+
+Show and transfer focus to the window with the specified id
+
+
+
+### showWindowFrame() 
+
+Show specified window and make frame identified by frameKey
+the active frame in that window
+
+
+
 
 * * *
 
