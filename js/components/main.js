@@ -126,6 +126,11 @@ class Main extends ImmutableComponent {
     ipc.on(messages.SHORTCUT_SET_ACTIVE_FRAME_BY_INDEX, (e, i) =>
       WindowActions.setActiveFrame(FrameStateUtil.getFrameByIndex(self.props.windowState, i)))
 
+    ipc.on(messages.SHORTCUT_SET_ACTIVE_FRAME_BY_KEY, (e, k) => {
+      console.log('SHORTCUT_SET_ACTIVE_FRAME_BY_KEY: ', k)
+      WindowActions.setActiveFrame(FrameStateUtil.getFrameByKey(self.props.windowState, k))
+    })
+
     ipc.on(messages.SHORTCUT_SET_ACTIVE_FRAME_TO_LAST, () =>
       WindowActions.setActiveFrame(self.props.windowState.getIn(['frames', self.props.windowState.get('frames').size - 1])))
 

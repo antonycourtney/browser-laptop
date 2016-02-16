@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+require('./braveTabliBrowser')
 const React = require('react')
 const ImmutableComponent = require('./immutableComponent')
 const Immutable = require('immutable')
 
-const Tabli = require('tabli')
+const Tabli = require('tabli-core')
 
 const TabWindow = Tabli.TabWindow
 const TabManagerState = Tabli.TabManagerState
@@ -24,7 +25,7 @@ function makeOpenTabItem (ws, fs) {
     favIconUrl: fs.get('icon'),
     open: true,
     tabTitle: (fsTitle && fsTitle.length > 0) ? fsTitle : fsUrl,
-    openTabId: fs.get('key'),  // probably also need window id
+    openTabId: [ws.get('id'), fs.get('key')],
     active: ws.get('activeFrameKey') === fs.get('key'),
     openTabIndex: fs.get('key')
   })

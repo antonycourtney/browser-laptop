@@ -54,7 +54,6 @@ const getAllWindowState = (callback) => {
         console.error('unexpected error gathering window state: ', err)
         return
       }
-      console.log('getAllWindowState: got window state for window ', win.id)
       // add Electron window id and focused flag to window state:
       data.id = win.id
       data.focused = win.isFocused()
@@ -322,9 +321,21 @@ const handleAppAction = (action) => {
     case AppConstants.APP_OPEN_TAB_MANAGER:
       const activeWindow = BrowserWindow.fromId(action.appWindowId)
       getAllWindowState(windowStates => {
-        console.log('openTabManager: got window states: ', windowStates)
         activeWindow.webContents.send(messages.TAB_MANAGER_RENDER, windowStates)
       })
+      break
+    case AppConstants.APP_SHOW_WINDOW:
+      const shownWindow = BrowserWindow.fromId(action.windowId)
+      if (shownWindow) {
+        shownWindow.show()
+      }
+      break
+    case AppConstants.APP_SHOW_WINDOW_FRAME:
+      const targetWindow = BrowserWindow.fromId(action.windowId)
+      if (targetWindow) {
+        targetWindow.show()
+        targetWindow.webContents.send(messages.SHORTCUT_SET_ACTIVE_FRAME_BY_KEY, action.frameKey)
+      }
       break
     default:
   }

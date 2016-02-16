@@ -8,28 +8,25 @@ These are mainly for my own use while developing the integration, but may prove 
 
 The entry point for the UI is an additional `Button` added to the `TabsToolbar`. The callback for this button is clicked is `Main.onTabManagerPopup` (in `components/main.js`), passed as the `onTabManager` prop to `TabsToolbar`.
 
-The popup window itself is `TabManagerPopup` (`components/TabManagerPopup.js`). Following the model of the `FindBar` component, this is realized as a fixed `div` with absolute size and positioning created
-by the `Frame` component (`components/frame.js`).  Modal effect achieved by nesting the popup div in a invisible (alpha of 0.0) `div` that covers the entire window.
-
-***TODO/FIXME: The TabManagerPopup should probably move to Main, since Frame is really a single tab.***
-Note:  Looks like the windowStore code is setting tabManagerShown (and presumably tabManagerWindowStates) on the frame, which is also almost certainly not what we want.
-
+The popup window itself is `TabManagerPopup` (`components/TabManagerPopup.js`). Following the model of the `FindBar` component, this is realized as a fixed `div` with absolute size and positioning; however, `TabManagerPopup` is a child of `Main` rather than `Frame`.
+Modal effect achieved by nesting the popup div in a invisible (alpha of 0.0) `div` of class 
+`tabManagerOverlay` that covers the entire window.
 
 Visbility of the `TabManagerPopup` controlled by `tabManagerShown` property of frame state (see [state.md](state.md) ).  [**TODO**: `FindBar` component now non-existent when not shown instead of using `active` property controlling visibility. Follow same approach for `TabManagerPopup`? ]
 
 Top-level callbacks / actions:
-  - Show popup: `Main.onTabManagerPopup` (in `components/main.js`)
-  - Hide popup: `Frame.onTabManagerHide` (in `components/frame.js`)
+  - Activate popup: `Main.onTabManagerPopup` (in `components/main.js`)
+  - Hide popup: `Main.onTabManagerHide` (in `components/frame.js`)
   - Action: `WindowActions.setTabManagerShown` 
   - Handler: `stores/WindowStore.js` (WINDOW_SET_TAB_MANAGER_SHOWN)
     (just sets the tabManagerShown prop of the frame state)
-
 
 
 # Gathering Window State
 
 The Tabli popup needs to gather the tab state of *all* windows, not just the current frame.
 This is slightly challenging in Brave because each window is a seperate process, managed by the main process.
+
 The closest thing to what Tabli needs is in `app/index.js`, which does:
 
 ```javascript

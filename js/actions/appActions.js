@@ -173,7 +173,30 @@ const AppActions = {
       actionType: AppConstants.APP_OPEN_TAB_MANAGER,
       appWindowId
     })
+  },
+
+  /**
+   * Show and transfer focus to the window with the specified id
+   */
+  showWindow: function (windowId) {
+    AppDispatcher.dispatch({
+      actionType: AppConstants.APP_SHOW_WINDOW,
+      windowId
+    })
+  },
+
+  /**
+   * Show specified window and make frame identified by frameKey
+   * the active frame in that window
+   */
+  showWindowFrame: function (windowId, frameKey) {
+    AppDispatcher.dispatch({
+      actionType: AppConstants.APP_SHOW_WINDOW_FRAME,
+      windowId,
+      frameKey
+    })
   }
+
 }
 
 module.exports = AppActions

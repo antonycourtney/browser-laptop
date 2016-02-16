@@ -18,7 +18,9 @@ const AppConstants = {
   APP_UPDATE_LAST_CHECK: _,
   APP_SET_UPDATE_STATUS: _,
   APP_CHANGE_SETTING: _,
-  APP_OPEN_TAB_MANAGER: _
+  APP_OPEN_TAB_MANAGER: _,
+  APP_SHOW_WINDOW: _,
+  APP_SHOW_WINDOW_FRAME: _
 }
 
 module.exports = mapValuesByKeys(AppConstants)

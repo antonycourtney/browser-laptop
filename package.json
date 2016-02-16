@@ -67,7 +67,7 @@
     "url-loader": "^0.5.7",
     "urlutil.js": "^0.1.1",
     "vibrant": "jariz/vibrant.js#1.0",
-    "tabli": "../../../chrome-extensions/tabli"    
+    "tabli-core": "../../../chrome-extensions/tabli-core"    
   },
   "devDependencies": {
     "asar": "^0.8.3",
