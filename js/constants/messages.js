@@ -38,6 +38,7 @@ const messages = {
   // Misc application events
   QUIT_APPLICATION: _,
   UPDATE_APP_MENU: _, /** @arg {Object} args menu args to update */
+  CERT_ERROR: _, /** @arg {Object} details of certificate error */
   // Updates
   UPDATE_REQUESTED: _,
   UPDATE_AVAILABLE: _,
@@ -62,11 +63,16 @@ const messages = {
   RESPONSE_WINDOW_STATE: _,
   // Ad block and tracking protection
   BLOCKED_RESOURCE: _,
-  // SETTINGS
+  // About pages to contentScripts
   SETTINGS_UPDATED: _,
-  CHANGE_SETTING: _,
+  BOOKMARKS_UPDATED: _,
   // finish opening tab manager
-  TAB_MANAGER_RENDER: _
+  TAB_MANAGER_RENDER: _,
+  // About pages from contentScript
+  CHANGE_SETTING: _,
+  NEW_FRAME: _,
+  // HTTPS
+  CERT_DETAILS_UPDATED: _ /** @arg {Object} security state of the active frame */
 }
 
 module.exports = mapValuesByKeys(messages)

@@ -1,6 +1,8 @@
 var Application = require('spectron').Application
 var chai = require('chai')
 require('./coMocha')
+const path = require('path')
+const fs = require('fs')
 
 var chaiAsPromised = require('chai-as-promised')
 chai.should()
@@ -22,7 +24,6 @@ var promiseMapSeries = function (array, iterator) {
 }
 
 var exports = {
-
   keys: {
     CONTROL: '\ue009',
     ESCAPE: '\ue00c',
@@ -30,18 +31,7 @@ var exports = {
     SHIFT: '\ue008'
   },
 
-  beforeAll: function (context) {
-    context.timeout(10000)
-
-    context.beforeAll(function () {
-      return exports.startApp.call(this)
-    })
-
-    // define ipc send/on
-    context.beforeAll(function () {
-      exports.addCommands.call(this)
-    })
-
+  beforeAllServerSetup: function (context) {
     context.beforeAll(function (done) {
       Server.create(`${__dirname}/../fixtures/`, (err, _server) => {
         if (err) {
@@ -51,6 +41,20 @@ var exports = {
         done()
       })
     })
+  },
+
+  beforeAll: function (context) {
+    context.timeout(30000)
+    context.beforeAll(function () {
+      return exports.startApp.call(this)
+    })
+
+    // define ipc send/on
+    context.beforeAll(function () {
+      exports.addCommands.call(this)
+    })
+
+    exports.beforeAllServerSetup(context)
 
     context.beforeEach(function () {
       chaiAsPromised.transferPromiseness = this.app.client.transferPromiseness
@@ -66,7 +70,7 @@ var exports = {
   },
 
   beforeEach: function (context) {
-    context.timeout(10000)
+    context.timeout(30000)
 
     context.beforeEach(function () {
       return exports.startApp.call(this)
@@ -93,6 +97,17 @@ var exports = {
       }, message, ...param).then((response) => response.value)
     })
 
+    this.app.client.addCommand('loadUrl', function (url) {
+      return this.execute(function (url) {
+        var Immutable = require('immutable')
+        var windowActions = require('../js/actions/windowActions')
+        windowActions.dispatchViaIPC()
+        windowActions.loadUrl(Immutable.fromJS({
+          isPinned: false
+        }), url)
+      }, url).then((response) => response.value)
+    })
+
     this.app.client.addCommand('ipcOn', function (message, fn) {
       return this.execute(function (message, fn) {
         return require('electron').remote.getCurrentWindow().webContents.on(message, fn)
@@ -103,6 +118,33 @@ var exports = {
       return this.execute(function () {
         return require('../js/actions/appActions').newWindow()
       }, frameOpts, browserOpts).then((response) => response.value)
+    })
+
+    /**
+     * Adds a site to the sites list, such as a bookmarks.
+     *
+     * @param {string} siteTag - A site tag from js/constants/siteTags.js
+     * @param {object} frameProps - Properties for the frame to add
+     *   - location
+     *   - title
+     *   - isPrivate
+     */
+    this.app.client.addCommand('addSite', function (frameProps, siteTag) {
+      return this.execute(function (frameProps, siteTag) {
+        return require('../js/actions/appActions').addSite(frameProps, siteTag)
+      }, frameProps, siteTag).then((response) => response.value)
+    })
+
+    /**
+     * Changes a setting
+     *
+     * @param {string} key - the setting key to change
+     * @param value - The setting value to change to
+     */
+    this.app.client.addCommand('changeSetting', function (key, value) {
+      return this.execute(function (key, value) {
+        return require('../js/actions/appActions').changeSetting(key, value)
+      }, key, value).then((response) => response.value)
     })
 
     this.app.client.addCommand('getDefaultWindowHeight', function () {
@@ -199,18 +241,25 @@ var exports = {
     })
   },
 
-  startApp: function () {
+  startApp: function (cleanSessionStore = true) {
+    if (cleanSessionStore) {
+      try {
+        fs.unlinkSync(path.join(process.env.HOME, '.brave-test-session-store-1'))
+      } catch (e) {
+      }
+    }
     this.app = new Application({
       path: './node_modules/.bin/electron',
-      args: ['./']
+      env: {
+        NODE_ENV: 'test'
+      },
+      args: ['./', 'debug=5858']
     })
     return this.app.start()
   },
 
   stopApp: function () {
-    if (this.app && this.app.isRunning()) {
-      return this.app.stop()
-    }
+    return this.app.stop()
   }
 }
 

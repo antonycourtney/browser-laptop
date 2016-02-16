@@ -51,33 +51,39 @@ const saveIfAllCollected = () => {
     appState.perWindowState = perWindowState
     const ignoreCatch = () => {}
 
-    if (process.env.NODE_ENV !== 'test') {
-      // If the status is still UPDATE_AVAILABLE then the user wants to quit
-      // and not restart
-      if (appState.updates.status === UpdateStatus.UPDATE_AVAILABLE ||
-          appState.updates.status === UpdateStatus.UPDATE_AVAILABLE_DEFERRED) {
-        appState.updates.status = UpdateStatus.UPDATE_APPLYING_NO_RESTART
-      }
-
-      SessionStore.saveAppState(appState).catch(ignoreCatch).then(() => {
-        sessionStateStoreAttempted = true
-        // If there's an update to apply, then do it here.
-        // Otherwise just quit.
-        if (appState.updates.status === UpdateStatus.UPDATE_APPLYING_NO_RESTART ||
-            appState.updates.status === UpdateStatus.UPDATE_APPLYING_RESTART) {
-          Updater.quitAndInstall()
-        } else {
-          app.quit()
-        }
-      })
-    } else {
-      sessionStateStoreAttempted = true
-      app.quit()
+    // If the status is still UPDATE_AVAILABLE then the user wants to quit
+    // and not restart
+    if (appState.updates.status === UpdateStatus.UPDATE_AVAILABLE ||
+        appState.updates.status === UpdateStatus.UPDATE_AVAILABLE_DEFERRED) {
+      appState.updates.status = UpdateStatus.UPDATE_APPLYING_NO_RESTART
     }
+
+    SessionStore.saveAppState(appState).catch(ignoreCatch).then(() => {
+      sessionStateStoreAttempted = true
+      // If there's an update to apply, then do it here.
+      // Otherwise just quit.
+      if (appState.updates.status === UpdateStatus.UPDATE_APPLYING_NO_RESTART ||
+          appState.updates.status === UpdateStatus.UPDATE_APPLYING_RESTART) {
+        Updater.quitAndInstall()
+      } else {
+        app.quit()
+      }
+    })
   }
 }
 
 app.on('ready', function () {
+  app.on('certificate-error', function (e, webContents, url, error, cert, cb) {
+    // Tell the page to show an unlocked icon. Note this is sent to the main
+    // window webcontents, not the webview webcontents
+    BrowserWindow.getAllWindows().map((win) => {
+      win.webContents.send(messages.CERT_ERROR, {
+        url,
+        error,
+        cert
+      })
+    })
+  })
   app.on('window-all-closed', function () {
     // On OS X it is common for applications and their menu bar
     // to stay active until the user quits explicitly with Cmd + Q
@@ -114,12 +120,7 @@ app.on('ready', function () {
 
   loadAppStatePromise.then(initialState => {
     // For tests we always want to load default app state
-    if (process.env.NODE_ENV === 'test') {
-      initialState = SessionStore.defaultAppState()
-    }
-
     const perWindowState = initialState.perWindowState
-
     delete initialState.perWindowState
     appActions.setState(Immutable.fromJS(initialState))
     return perWindowState
@@ -149,27 +150,8 @@ app.on('ready', function () {
       Menu.init(args)
     })
 
-    ipcMain.on(messages.CONTEXT_MENU_OPENED, (e, nodeName) => {
-      BrowserWindow.getFocusedWindow().webContents.send(messages.CONTEXT_MENU_OPENED, nodeName)
-    })
-
-    ipcMain.on(messages.LINK_HOVERED, (e, href, position) => {
-      const browserWindow = BrowserWindow.getFocusedWindow()
-      if (browserWindow) {
-        BrowserWindow.getFocusedWindow().webContents.send(messages.LINK_HOVERED, href, position)
-      } else {
-        BrowserWindow.getAllWindows().map(win => {
-          win.webContents.send(messages.LINK_HOVERED, href)
-        })
-      }
-    })
-
     ipcMain.on(messages.CHANGE_SETTING, (e, key, value) => {
       appActions.changeSetting(key, value)
-    })
-
-    ipcMain.on(messages.STOP_LOAD, () => {
-      BrowserWindow.getFocusedWindow().webContents.send(messages.STOP_LOAD)
     })
 
     Menu.init()

@@ -1,5 +1,5 @@
 const ReactDOM = require('react-dom')
-import { getSourceAboutUrl } from '../lib/appUrlUtil.js'
+const { getSourceAboutUrl } = require('../lib/appUrlUtil')
 
 let rootComponent
 switch (getSourceAboutUrl(window.location.href)) {
@@ -11,6 +11,12 @@ switch (getSourceAboutUrl(window.location.href)) {
     break
   case 'about:preferences':
     rootComponent = require('./preferences')
+    break
+  case 'about:bookmarks':
+    rootComponent = require('./bookmarks')
+    break
+  case 'about:certerror':
+    rootComponent = require('./certerror')
     break
 }
 

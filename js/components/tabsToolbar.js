@@ -7,6 +7,7 @@ const ImmutableComponent = require('./immutableComponent')
 const Tabs = require('./tabs')
 const Button = require('./button')
 const PinnedTabs = require('./pinnedTabs')
+const contextMenus = require('../contextMenus')
 
 class TabsToolbarButtons extends ImmutableComponent {
   render () {
@@ -16,6 +17,7 @@ class TabsToolbarButtons extends ImmutableComponent {
         onClick={this.props.onTabManager}
        />
       <Button iconClass='fa-bars'
+        l10nId='menuButton'
         className='navbutton menu-button'
         onClick={this.props.onMenu} />
     </div>
@@ -32,7 +34,8 @@ class TabsToolbar extends ImmutableComponent {
       .filter(frame => !frame.get('isPinned'))
       .slice(startingFrameIndex, startingFrameIndex + this.props.tabsPerTabPage)
 
-    return <div className='tabsToolbar'>
+    return <div className='tabsToolbar'
+      onContextMenu={contextMenus.onTabsToolbarContextMenu.bind(this, this.props.settings)}>
       { pinnedFrames.size > 0
         ? <PinnedTabs sites={this.props.sites}
         frames={this.props.frames}

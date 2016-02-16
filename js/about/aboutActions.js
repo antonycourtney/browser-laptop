@@ -19,6 +19,45 @@ const AboutActions = {
       }
     })
     window.dispatchEvent(event)
+  },
+
+  /**
+   * Loads a URL in a new frame in a safe way.
+   * It is important that it is not a simple anchor because it should not
+   * preserve the about preload script. See #672
+   */
+  newFrame: function (location, openInForeground = true) {
+    const event = new window.CustomEvent(messages.NEW_FRAME, {
+      detail: {
+        location,
+        openInForeground
+      }
+    })
+    window.dispatchEvent(event)
+  },
+
+  /**
+   * Click through a certificate error.
+   *
+   * @param {string} url - The URL with the cert error
+   */
+  acceptCertError: function (url) {
+    // TODO
+  },
+
+  /**
+   * Opens a context menu
+   */
+  contextMenu: function (nodeProps, contextMenuType, e) {
+    e.preventDefault()
+    e.stopPropagation()
+    const event = new window.CustomEvent(messages.CONTEXT_MENU_OPENED, {
+      detail: {
+        nodeProps,
+        contextMenuType
+      }
+    })
+    window.dispatchEvent(event)
   }
 }
 module.exports = AboutActions

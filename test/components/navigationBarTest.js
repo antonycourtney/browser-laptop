@@ -1,7 +1,7 @@
 /* global describe, it, before */
 
 const Brave = require('../lib/brave')
-const Config = require('../../js/constants/config').default
+const Config = require('../../js/constants/config')
 const {urlInput, activeWebview, activeTabFavicon, activeTab, navigatorLoadTime, titleBar, urlbarIcon} = require('../lib/selectors')
 const urlParse = require('url').parse
 const assert = require('assert')
@@ -11,7 +11,7 @@ describe('urlbar', function () {
     yield client
       .waitUntilWindowLoaded()
       .waitForVisible('#window')
-      .waitForVisible(urlInput)
+      .waitForEnabled(urlInput)
   }
 
   function * newFrame (client, frameKey = 2) {
@@ -37,16 +37,6 @@ describe('urlbar', function () {
     .getAttribute(urlInput, 'placeholder').should.eventually.equal('Search or enter an address')
   }
 
-  function * navigate (client, url) {
-    yield client.ipcSend('shortcut-focus-url')
-      .setValue(urlInput, url)
-      // hit enter
-      .keys('\uE007')
-      .waitUntil(function () {
-        return this.getAttribute(activeWebview, 'src').then(src => src === url)
-      })
-  }
-
   function selectsText (client, text = Config.defaultUrl) {
     return client.waitUntil(function () {
       return this.getSelectedText().then(function (value) { return value === text })
@@ -61,7 +51,7 @@ describe('urlbar', function () {
         this.page1Url = Brave.server.url('page1.html')
         this.host = urlParse(this.page1Url).host
         yield setup(this.app.client)
-        yield navigate(this.app.client, this.page1Url)
+        yield this.app.client.loadUrl(this.page1Url)
         yield this.app.client.waitForValue(urlInput)
       })
 
@@ -100,9 +90,9 @@ describe('urlbar', function () {
         this.pageNoTitle = Brave.server.url('page_no_title.html')
         yield setup(this.app.client)
         // Navigate to a page with a title first to ensure it gets reset
-        yield navigate(this.app.client, this.page1Url)
+        yield this.app.client.loadUrl(this.page1Url)
         yield this.app.client.waitForValue(urlInput)
-        yield navigate(this.app.client, this.pageNoTitle)
+        yield this.app.client.loadUrl(this.pageNoTitle)
         yield this.app.client.waitForValue(urlInput)
       })
 
@@ -125,7 +115,7 @@ describe('urlbar', function () {
 
     it('Uses the default favicon when one is not specified', function *() {
       const page1Url = Brave.server.url('page1.html')
-      yield navigate(this.app.client, page1Url)
+      yield this.app.client.loadUrl(page1Url)
       yield this.app.client.waitUntil(() =>
         this.app.client.getCssProperty(activeTabFavicon, 'background-image').then(backgroundImage =>
           backgroundImage.value === `url("${Brave.server.url('favicon.ico')}")`
@@ -134,7 +124,7 @@ describe('urlbar', function () {
 
     it('Parses favicon when one is present', function *() {
       const pageWithFavicon = Brave.server.url('favicon.html')
-      yield navigate(this.app.client, pageWithFavicon)
+      yield this.app.client.loadUrl(pageWithFavicon)
       yield this.app.client.waitUntil(() =>
         this.app.client.getCssProperty(activeTabFavicon, 'background-image').then(backgroundImage =>
           backgroundImage.value === `url("${Brave.server.url('img/test.ico')}")`
@@ -151,7 +141,7 @@ describe('urlbar', function () {
 
     it('Shows insecure URL icon', function *() {
       const page1Url = Brave.server.url('page1.html')
-      yield navigate(this.app.client, page1Url)
+      yield this.app.client.loadUrl(page1Url)
       yield this.app.client.waitUntil(() =>
         this.app.client
           .moveToObject(urlInput)
@@ -161,7 +151,7 @@ describe('urlbar', function () {
     })
     it('Shows secure URL icon', function *() {
       const page1Url = Brave.server.url('page1.html').replace('http', 'https')
-      yield navigate(this.app.client, page1Url)
+      yield this.app.client.loadUrl(page1Url)
       yield this.app.client
         .moveToObject(urlInput)
         .waitUntil(() =>
@@ -180,30 +170,30 @@ describe('urlbar', function () {
 
     it('Uses the default tab color when one is not specified', function *() {
       const page1Url = Brave.server.url('page1.html')
-      yield navigate(this.app.client, page1Url)
+      yield this.app.client.loadUrl(page1Url)
       let backgroundColor = yield this.app.client.getCssProperty(activeTab, 'background-color')
       assert.equal(backgroundColor.parsed.hex, '#f3f3f3')
     })
 
     // We need a newer electron build first
-    it('Parses theme-color meta tag when one is present', function *() {
+    it.skip('Parses theme-color meta tag when one is present', function *() {
       const pageWithFavicon = Brave.server.url('theme_color.html')
-      yield navigate(this.app.client, pageWithFavicon)
+      yield this.app.client.loadUrl(pageWithFavicon)
       yield this.app.client.waitUntil(() =>
         this.app.client.getCssProperty(activeTab, 'background-color').then(backgroundColor =>
           backgroundColor.parsed.hex === '#4d90fe'
       ))
     })
-    it('Obtains theme color from the background', function *() {
+    it.skip('Obtains theme color from the background', function *() {
       const redPage = Brave.server.url('red_bg.html')
-      yield navigate(this.app.client, redPage)
+      yield this.app.client.loadUrl(redPage)
       yield this.app.client.waitUntil(() =>
         this.app.client.getCssProperty(activeTab, 'background-color').then(backgroundColor =>
           backgroundColor.parsed.hex === '#ff0000'))
     })
-    it('Obtains theme color from a top header and not background', function *() {
+    it.skip('Obtains theme color from a top header and not background', function *() {
       const redPage = Brave.server.url('yellow_header.html')
-      yield navigate(this.app.client, redPage)
+      yield this.app.client.loadUrl(redPage)
       yield this.app.client.waitUntil(() =>
         this.app.client.getCssProperty(activeTab, 'background-color').then(backgroundColor =>
           backgroundColor.parsed.hex === '#ffff66'))
@@ -345,6 +335,23 @@ describe('urlbar', function () {
         yield selectsText(this.app.client)
       })
     })
+
+    describe('submitting by typing a URL', function () {
+      before(function *() {
+        const url = Brave.server.url('page1.html')
+        return yield this.app.client.ipcSend('shortcut-focus-url')
+          .setValue(urlInput, url)
+          // hit enter
+          .keys('\uE007')
+      })
+
+      it('changes the webview src', function *() {
+        const url = Brave.server.url('page1.html')
+        yield this.app.client.waitUntil(function () {
+          return this.getAttribute(activeWebview, 'src').then(src => src === url)
+        })
+      })
+    })
   })
 
   // need to move urlbar state to frame before enabling these
@@ -362,7 +369,7 @@ describe('urlbar', function () {
         })
       // tab with loaded url
       yield newFrame(this.app.client, 3)
-      yield navigate(this.app.client, Brave.server.url('page1.html'))
+      yield this.app.client.loadUrl(Brave.server.url('page1.html'))
     })
 
     describe('switch to default state tab', function () {

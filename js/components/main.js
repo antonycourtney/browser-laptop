@@ -25,6 +25,7 @@ const UpdateBar = require('./updateBar')
 const Button = require('./button')
 const SiteInfo = require('./siteInfo')
 const ReleaseNotes = require('./releaseNotes')
+const BookmarksToolbar = require('./bookmarksToolbar')
 
 // Constants
 const Config = require('../constants/config')
@@ -32,6 +33,7 @@ const AppConfig = require('../constants/appConfig')
 const messages = require('../constants/messages')
 const settings = require('../constants/settings')
 const TabManagerPopup = require('./tabManagerPopup.js')
+const siteTags = require('../constants/siteTags')
 
 // State handling
 const FrameStateUtil = require('../state/frameStateUtil')
@@ -93,12 +95,6 @@ class Main extends ImmutableComponent {
 
   componentDidMount () {
     this.registerSwipeListener()
-    ipc.on(messages.STOP_LOAD, () => {
-      ipc.emit(messages.SHORTCUT_ACTIVE_FRAME_STOP)
-    })
-    ipc.on(messages.CONTEXT_MENU_OPENED, (e, nodeProps) => {
-      contextMenus.onMainContextMenu(nodeProps)
-    })
     ipc.on(messages.SHORTCUT_NEW_FRAME, (event, url, options = {}) => {
       if (options.singleFrame) {
         const frameProps = self.props.windowState.get('frames').find(frame => frame.get('location') === url)
@@ -114,7 +110,6 @@ class Main extends ImmutableComponent {
         isPrivate: !!options.isPrivate,
         isPartitioned: !!options.isPartitioned
       }, openInForeground)
-      ipc.emit(messages.SHORTCUT_FOCUS_URL)
     })
 
     ipc.on(messages.SHORTCUT_CLOSE_FRAME, (e, i) => typeof i !== 'undefined'
@@ -151,7 +146,13 @@ class Main extends ImmutableComponent {
   }
 
   checkForTitleMode (pageY) {
-    const height = document.querySelector('#navigator').getBoundingClientRect().bottom
+    const navigator = document.querySelector('#navigator')
+    // Uncaught TypeError: Cannot read property 'getBoundingClientRect' of null
+    if (!navigator) {
+      return
+    }
+
+    const height = navigator.getBoundingClientRect().bottom
     if (pageY <= height && this.props.windowState.getIn(['ui', 'mouseInTitlebar']) !== true) {
       WindowActions.setMouseInTitlebar(true)
     } else if (pageY === undefined || pageY > height && this.props.windowState.getIn(['ui', 'mouseInTitlebar']) !== false) {
@@ -237,50 +238,62 @@ class Main extends ImmutableComponent {
     const settingsState = this.props.appState.get('settings') || new Immutable.Map()
     const nonPinnedFrames = this.props.windowState.get('frames').filter(frame => !frame.get('isPinned'))
     const tabsPerPage = getSetting(settingsState, settings.TABS_PER_TAB_PAGE)
+    const showBookmarksToolbar = getSetting(settingsState, settings.SHOW_BOOKMARKS_TOOLBAR)
     return <div id='window' ref={node => this.mainWindow = node}>
       <div className='top'>
-        <div className='navigator-wrapper'>
-          <div className='backforward'>
-            <span
-              className='back fa fa-angle-left'
-              disabled={!activeFrame || !activeFrame.get('canGoBack')}
-              onClick={this.onBack.bind(this)} />
-            <span
-              className='forward fa fa-angle-right'
-              disabled={!activeFrame || !activeFrame.get('canGoForward')}
-              onClick={this.onForward.bind(this)} />
-          </div>
-          <NavigationBar
-            ref={node => this.navBar = node}
-            navbar={activeFrame && activeFrame.get('navbar')}
-            frames={this.props.windowState.get('frames')}
-            sites={this.props.appState.get('sites')}
-            activeFrame={activeFrame}
-            mouseInTitlebar={this.props.windowState.getIn(['ui', 'mouseInTitlebar'])}
-            searchSuggestions={activeFrame && activeFrame.getIn(['navbar', 'urlbar', 'searchSuggestions'])}
-            settings={settingsState}
-            searchDetail={this.props.windowState.get('searchDetail')}
-          />
-          { this.props.windowState.getIn(['ui', 'siteInfo', 'isVisible'])
-            ? <SiteInfo frameProps={activeFrame}
-                siteInfo={this.props.windowState.getIn(['ui', 'siteInfo'])}
-                onHide={this.onHideSiteInfo.bind(this)} /> : null
-          }
-          { this.props.windowState.getIn(['ui', 'releaseNotes', 'isVisible'])
-            ? <ReleaseNotes
-                metadata={this.props.appState.getIn(['updates', 'metadata'])}
-                onHide={this.onHideReleaseNotes.bind(this)} /> : null
-          }
-          <div className='topLevelEndButtons'>
-            <Button iconClass='braveMenu'
-              className='navbutton'
-              onClick={this.onBraveMenu.bind(this)} />
+        <div className='navigatorOuterWrapper'>
+          <div className='navigatorWrapper'>
+            <div className='backforward'>
+              <span data-l10n-id='backButton'
+                className='back fa fa-angle-left'
+                disabled={!activeFrame || !activeFrame.get('canGoBack')}
+                onClick={this.onBack.bind(this)} />
+              <span data-l10n-id='forwardButton'
+                className='forward fa fa-angle-right'
+                disabled={!activeFrame || !activeFrame.get('canGoForward')}
+                onClick={this.onForward.bind(this)} />
+            </div>
+            <NavigationBar
+              ref={node => this.navBar = node}
+              navbar={activeFrame && activeFrame.get('navbar')}
+              frames={this.props.windowState.get('frames')}
+              sites={this.props.appState.get('sites')}
+              activeFrame={activeFrame}
+              mouseInTitlebar={this.props.windowState.getIn(['ui', 'mouseInTitlebar'])}
+              searchSuggestions={activeFrame && activeFrame.getIn(['navbar', 'urlbar', 'searchSuggestions'])}
+              settings={settingsState}
+              searchDetail={this.props.windowState.get('searchDetail')}
+            />
+            { this.props.windowState.getIn(['ui', 'siteInfo', 'isVisible'])
+              ? <SiteInfo frameProps={activeFrame}
+                  siteInfo={this.props.windowState.getIn(['ui', 'siteInfo'])}
+                  onHide={this.onHideSiteInfo.bind(this)} /> : null
+            }
+            { this.props.windowState.getIn(['ui', 'releaseNotes', 'isVisible'])
+              ? <ReleaseNotes
+                  metadata={this.props.appState.getIn(['updates', 'metadata'])}
+                  onHide={this.onHideReleaseNotes.bind(this)} /> : null
+            }
+            <div className='topLevelEndButtons'>
+              <Button iconClass='braveMenu'
+                className='navbutton'
+                onClick={this.onBraveMenu.bind(this)} />
+            </div>
           </div>
         </div>
+
+        { showBookmarksToolbar
+          ? <BookmarksToolbar settings={settingsState}
+              activeFrame={activeFrame}
+              bookmarks={this.props.appState.get('sites')
+                .filter(site => site.get('tags').includes(siteTags.BOOKMARK))
+              }/>
+          : null }
         <div className={cx({
           tabPages: true,
           singlePage: nonPinnedFrames.size <= tabsPerPage
-        })}>
+        })}
+          onContextMenu={contextMenus.onTabsToolbarContextMenu.bind(this, settingsState)}>
           { nonPinnedFrames.size > tabsPerPage
             ? <TabPages frames={nonPinnedFrames}
                 tabsPerTabPage={tabsPerPage}
@@ -290,6 +303,7 @@ class Main extends ImmutableComponent {
         <TabsToolbar
           paintTabs={getSetting(settingsState, settings.PAINT_TABS)}
           previewTabs={getSetting(settingsState, settings.SHOW_TAB_PREVIEWS)}
+          settings={settingsState}
           tabsPerTabPage={tabsPerPage}
           tabs={this.props.windowState.getIn(['ui', 'tabs'])}
           frames={this.props.windowState.get('frames')}
@@ -318,7 +332,12 @@ class Main extends ImmutableComponent {
               onCloseFrame={this.onCloseFrame}
               frame={frame}
               key={frame.get('key')}
-              settings={settingsState || new Immutable.Map()}
+              settings={frame.get('location') === 'about:preferences' ? settingsState || new Immutable.Map() : null}
+              bookmarks={frame.get('location') === 'about:bookmarks'
+                ? this.props.appState.get('sites')
+                    .filter(site => site.get('tags')
+                      .includes(siteTags.BOOKMARK)) || new Immutable.Map()
+                : null}
               enableAds={this.enableAds}
               isPreview={frame.get('key') === this.props.windowState.get('previewFrameKey')}
               isActive={FrameStateUtil.isFrameKeyActive(this.props.windowState, frame.get('key'))}

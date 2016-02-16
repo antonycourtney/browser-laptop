@@ -13,7 +13,7 @@ const {isSiteInList} = require('../state/siteUtil')
 const SiteTags = require('../constants/siteTags')
 const messages = require('../constants/messages')
 const ipc = global.require('electron').ipcRenderer
-import { isSourceAboutUrl } from '../lib/appUrlUtil.js'
+const { isSourceAboutUrl } = require('../lib/appUrlUtil')
 
 class NavigationBar extends ImmutableComponent {
 
@@ -83,9 +83,11 @@ class NavigationBar extends ImmutableComponent {
       { isSourceAboutUrl(frameProps.get('location')) ? null
         : <div className='startButtons'>
         <Button iconClass='fa-repeat'
+          l10nId='reloadButton'
           className='navbutton reload-button'
           onClick={this.onReload.bind(this)} />
         <Button iconClass='fa-times'
+          l10nId='stopButton'
           className='navbutton stop-button'
           onClick={this.onStop.bind(this)} />
       </div>
@@ -104,9 +106,11 @@ class NavigationBar extends ImmutableComponent {
       { isSourceAboutUrl(frameProps.get('location')) ? null
       : <div className='endButtons'>
           <Button iconClass='fa-star-o'
+            l10nId='addBookmarkButton'
             className='navbutton bookmark-button'
             onClick={this.onAddBookmark.bind(this)} />
           <Button iconClass='fa-star-o'
+            l10nId='removeBookmarkButton'
             className='navbutton remove-bookmark-button'
             onClick={this.onRemoveBookmark.bind(this)} />
         </div>

@@ -2,15 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const remote = require('remote')
+const electron = global.require('electron')
+const remote = electron.remote
 const Menu = remote.require('menu')
-const Clipboard = require('clipboard')
+const clipboard = electron.clipboard
 const messages = require('./constants/messages')
 const WindowActions = require('./actions/windowActions')
 const AppActions = require('./actions/appActions')
-const SiteTags = require('./constants/siteTags')
+const siteTags = require('./constants/siteTags')
+const settings = require('./constants/settings')
 const CommonMenu = require('./commonMenu')
 const ipc = global.require('electron').ipcRenderer
+const getSetting = require('./settings').getSetting
 
 function tabPageTemplateInit (framePropsList) {
   const muteAll = (framePropsList, mute) => {
@@ -42,6 +45,31 @@ function inputTemplateInit (e) {
   return getEditableItems(hasSelection)
 }
 
+function tabsToolbarTemplateInit (settingsState) {
+  const showBookmarksToolbar = getSetting(settingsState, settings.SHOW_BOOKMARKS_TOOLBAR)
+  return [{
+    label: 'Bookmarks Toolbar',
+    type: 'checkbox',
+    checked: showBookmarksToolbar,
+    click: (item, focusedWindow) => {
+      AppActions.changeSetting(settings.SHOW_BOOKMARKS_TOOLBAR, !showBookmarksToolbar)
+    }
+  }]
+}
+
+function bookmarkTemplateInit (location) {
+  return [openInNewTabMenuItem(location),
+    openInNewPrivateTabMenuItem(location),
+    openInNewSessionTabMenuItem(location),
+    copyLinkLocationMenuItem(location),
+    CommonMenu.separatorMenuItem, {
+      label: 'Delete',
+      click: () => {
+        AppActions.removeSite({ location }, siteTags.BOOKMARK)
+      }
+    }]
+}
+
 function tabTemplateInit (frameProps) {
   const tabKey = frameProps.get('key')
   const items = []
@@ -62,7 +90,7 @@ function tabTemplateInit (frameProps) {
           // Handle converting the current tab window into a pinned site
           WindowActions.setPinned(frameProps, false)
           // Handle setting it in app storage for the other windows
-          AppActions.removeSite(frameProps, SiteTags.PINNED)
+          AppActions.removeSite(frameProps, siteTags.PINNED)
         }
       })
     } else {
@@ -72,7 +100,7 @@ function tabTemplateInit (frameProps) {
           // Handle converting the current tab window into a pinned site
           WindowActions.setPinned(frameProps, true)
           // Handle setting it in app storage for the other windows
-          AppActions.addSite(frameProps, SiteTags.PINNED)
+          AppActions.addSite(frameProps, siteTags.PINNED)
         }
       })
     }
@@ -154,10 +182,53 @@ function hamburgerTemplateInit (settings) {
     }),
     CommonMenu.separatorMenuItem,
     CommonMenu.preferencesMenuItem,
+    CommonMenu.bookmarksMenuItem,
     CommonMenu.separatorMenuItem,
     CommonMenu.quitMenuItem
   ]
   return template
+}
+
+const openInNewTabMenuItem = location => {
+  return {
+    label: 'Open in new tab',
+    click: () => {
+      WindowActions.newFrame({ location }, false)
+    }
+  }
+}
+
+const openInNewPrivateTabMenuItem = location => {
+  return {
+    label: 'Open in new private tab',
+    click: () => {
+      WindowActions.newFrame({
+        location,
+        isPrivate: true
+      }, false)
+    }
+  }
+}
+
+const openInNewSessionTabMenuItem = location => {
+  return {
+    label: 'Open in new session tab',
+    click: (item, focusedWindow) => {
+      WindowActions.newFrame({
+        location,
+        isPartitioned: true
+      }, false)
+    }
+  }
+}
+
+const copyLinkLocationMenuItem = location => {
+  return {
+    label: 'Copy link address',
+    click: () => {
+      clipboard.writeText(location)
+    }
+  }
 }
 
 function mainTemplateInit (nodeProps) {
@@ -165,44 +236,11 @@ function mainTemplateInit (nodeProps) {
   const nodeName = nodeProps.name
 
   if (nodeProps.href) {
-    template.push({
-      label: 'Open in new tab',
-      click: (item, focusedWindow) => {
-        if (focusedWindow) {
-          // TODO: open this in the next tab instead of last tab
-          // TODO: If the tab is private, this should probably be private.
-          // Depends on #139
-          focusedWindow.webContents.send(messages.SHORTCUT_NEW_FRAME, nodeProps.href, { openInForeground: false })
-        }
-      }
-    })
-    template.push({
-      label: 'Open in new private tab',
-      click: (item, focusedWindow) => {
-        if (focusedWindow) {
-          // TODO: open this in the next tab instead of last tab
-          focusedWindow.webContents.send(messages.SHORTCUT_NEW_FRAME, nodeProps.href, { isPrivate: true })
-        }
-      }
-    })
-    template.push({
-      label: 'Open in new session tab',
-      click: (item, focusedWindow) => {
-        if (focusedWindow) {
-          // TODO: open this in the next tab instead of last tab
-          focusedWindow.webContents.send(messages.SHORTCUT_NEW_FRAME, nodeProps.href, { isPartitioned: true })
-        }
-      }
-    })
-    template.push({
-      label: 'Copy link address',
-      click: (item, focusedWindow) => {
-        if (focusedWindow) {
-          Clipboard.writeText(nodeProps.href)
-        }
-      }
-    })
-    template.push(CommonMenu.separatorMenuItem)
+    template.push(openInNewTabMenuItem(nodeProps.href),
+      openInNewPrivateTabMenuItem(nodeProps.href),
+      openInNewSessionTabMenuItem(nodeProps.href),
+      copyLinkLocationMenuItem(nodeProps.href),
+      CommonMenu.separatorMenuItem)
   }
 
   if (nodeName === 'IMG') {
@@ -227,7 +265,7 @@ function mainTemplateInit (nodeProps) {
       label: 'Copy image address',
       click: (item, focusedWindow) => {
         if (focusedWindow && nodeProps.src) {
-          Clipboard.writeText(nodeProps.src)
+          clipboard.writeText(nodeProps.src)
         }
       }
     })
@@ -236,7 +274,15 @@ function mainTemplateInit (nodeProps) {
 
   if (nodeName === 'TEXTAREA' || nodeName === 'INPUT' || nodeProps.isContentEditable) {
     const editableItems = getEditableItems(nodeProps.hasSelection)
-    template.push(...editableItems)
+    template.push({
+      label: 'Undo',
+      accelerator: 'CmdOrCtrl+Z',
+      role: 'undo'
+    }, {
+      label: 'Redo',
+      accelerator: 'Shift+CmdOrCtrl+Z',
+      role: 'redo'
+    }, CommonMenu.separatorMenuItem, ...editableItems)
   } else if (nodeProps.hasSelection) {
     template.push({
       label: 'Copy',
@@ -279,15 +325,25 @@ export function onHamburgerMenu (settings) {
   hamburgerMenu.popup(remote.getCurrentWindow())
 }
 
-export function onMainContextMenu (nodeProps) {
-  const mainMenu = Menu.buildFromTemplate(mainTemplateInit(nodeProps))
-  mainMenu.popup(remote.getCurrentWindow())
+export function onMainContextMenu (nodeProps, contextMenuType) {
+  if (contextMenuType === 'bookmark') {
+    onBookmarkContextMenu(nodeProps.location, nodeProps.title)
+  } else {
+    const mainMenu = Menu.buildFromTemplate(mainTemplateInit(nodeProps))
+    mainMenu.popup(remote.getCurrentWindow())
+  }
 }
 
 export function onTabContextMenu (frameProps, e) {
   e.preventDefault()
   const tabMenu = Menu.buildFromTemplate(tabTemplateInit(frameProps))
   tabMenu.popup(remote.getCurrentWindow())
+}
+
+export function onTabsToolbarContextMenu (settings, e) {
+  e.preventDefault()
+  const tabsToolbarMenu = Menu.buildFromTemplate(tabsToolbarTemplateInit(settings))
+  tabsToolbarMenu.popup(remote.getCurrentWindow())
 }
 
 export function onTabPageContextMenu (framePropsList, e) {
@@ -297,6 +353,16 @@ export function onTabPageContextMenu (framePropsList, e) {
 }
 
 export function onUrlBarContextMenu (e) {
+  e.preventDefault()
   const inputMenu = Menu.buildFromTemplate(inputTemplateInit(e))
   inputMenu.popup(remote.getCurrentWindow())
+}
+
+export function onBookmarkContextMenu (location, title, e) {
+  if (e) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+  const menu = Menu.buildFromTemplate(bookmarkTemplateInit(location, title))
+  menu.popup(remote.getCurrentWindow())
 }

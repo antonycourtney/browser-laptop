@@ -14,9 +14,8 @@ const ipc = global.require('electron').ipcRenderer
 const UrlBarSuggestions = require('./urlBarSuggestions.js')
 const messages = require('../constants/messages')
 const contextMenus = require('../contextMenus')
-const Config = require('../constants/config')
 
-import {isUrl} from '../lib/appUrlUtil.js'
+const {isUrl} = require('../lib/appUrlUtil')
 
 class UrlBar extends ImmutableComponent {
 
@@ -159,6 +158,18 @@ class UrlBar extends ImmutableComponent {
     })
     // escape key handling
     ipc.on(messages.SHORTCUT_ACTIVE_FRAME_STOP, this.onActiveFrameStop.bind(this))
+    ipc.on(messages.CERT_ERROR, (e, details) => {
+      // Sometimes the cert error fires before the active frame location
+      // has been updated, so wait 100ms.
+      window.setTimeout(() => {
+        if (details.url === this.props.activeFrameProps.get('location')) {
+          WindowActions.setSecurityState({
+            certDetails: details
+          })
+          WindowActions.loadUrl(this.props.activeFrameProps, 'about:certerror')
+        }
+      }, 100)
+    })
   }
 
   componentDidMount () {
@@ -182,7 +193,7 @@ class UrlBar extends ImmutableComponent {
   }
 
   get locationValue () {
-    return ['about:newtab'].includes(this.props.urlbar.get('location'))
+    return ['about:blank', 'about:newtab'].includes(this.props.urlbar.get('location'))
       ? '' : this.props.urlbar.get('location')
   }
 
@@ -249,7 +260,7 @@ class UrlBar extends ImmutableComponent {
         </div>
         </div>
       <input type='text'
-        disabled={this.props.activeFrameProps.get('location') === Config.defaultUrl && this.loadTime === ''}
+        disabled={this.props.activeFrameProps.get('location') === undefined && this.loadTime === ''}
         onFocus={this.onFocus.bind(this)}
         onBlur={this.onBlur.bind(this)}
         onKeyDown={this.onKeyDown.bind(this)}

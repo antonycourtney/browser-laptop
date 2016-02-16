@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Config = require('../constants/config').default
+const Config = require('../constants/config')
 const WindowActions = require('../actions/windowActions')
 const WindowDispatcher = require('../dispatcher/windowDispatcher')
 const EventEmitter = require('events').EventEmitter
@@ -38,9 +38,9 @@ const activeFrameStatePath = () => frameStatePath(windowState.get('activeFrameKe
 const frameStatePathForFrame = (frameProps) =>
   ['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), frameProps)]
 
-const updateNavBarInput = (loc) => {
-  windowState = windowState.setIn(activeFrameStatePath().concat(['navbar', 'urlbar', 'location']), loc)
-  windowState = windowState.setIn(activeFrameStatePath().concat(['navbar', 'urlbar', 'urlPreview']), null)
+const updateNavBarInput = (loc, frameStatePath = activeFrameStatePath()) => {
+  windowState = windowState.setIn(frameStatePath.concat(['navbar', 'urlbar', 'location']), loc)
+  windowState = windowState.setIn(frameStatePath.concat(['navbar', 'urlbar', 'urlPreview']), null)
 }
 
 /**
@@ -155,10 +155,7 @@ const doAction = (action) => {
         title: action.location === lastLocation ? lastTitle : '',
         location: action.location
       })
-      // Update the displayed location in the urlbar
-      if (key === windowState.get('activeFrameKey')) {
-        updateNavBarInput(action.location)
-      }
+      updateNavBarInput(action.location, frameStatePath(key))
       break
     case WindowConstants.WINDOW_SET_NAVBAR_INPUT:
       updateNavBarInput(action.location)
@@ -310,6 +307,12 @@ const doAction = (action) => {
       frames = frames.splice(newIndex, 0, action.sourceFrameProps)
       windowState = windowState.set('frames', frames)
       break
+    case WindowConstants.WINDOW_SET_LINK_HOVER_PREVIEW:
+      windowState = windowState.mergeIn(activeFrameStatePath(), {
+        hrefPreview: action.href,
+        showOnRight: action.showOnRight
+      })
+      break
     case WindowConstants.WINDOW_SET_URL_BAR_SUGGESTIONS:
       windowState = windowState.setIn(activeFrameStatePath().concat(['navbar', 'urlbar', 'suggestions', 'selectedIndex']), action.selectedIndex)
       windowState = windowState.setIn(activeFrameStatePath().concat(['navbar', 'urlbar', 'suggestions', 'suggestionList']), action.suggestionList)
@@ -406,6 +409,10 @@ const doAction = (action) => {
         windowState = windowState.setIn(activeFrameStatePath().concat(['security', 'isSecure']),
                                         action.securityState.secure)
       }
+      if (action.securityState.certDetails) {
+        windowState = windowState.setIn(activeFrameStatePath().concat(['security', 'certDetails']),
+                                        action.securityState.certDetails)
+      }
       break
     case WindowConstants.WINDOW_SET_BLOCKED_BY:
       const blockedByPath = ['frames', FrameStateUtil.getFramePropsIndex(windowState.get('frames'), action.frameProps), action.blockType, 'blocked']
@@ -447,19 +454,6 @@ const doAction = (action) => {
 
 WindowDispatcher.register(doAction)
 
-ipc.on(messages.LINK_HOVERED, (e, href, position) => {
-  position = position || {}
-  const nearBottom = position.y > (window.innerHeight - 150) // todo: magic number
-  const mouseOnLeft = position.x < (window.innerWidth / 2)
-  const showOnRight = nearBottom && mouseOnLeft
-
-  windowState = windowState.mergeIn(activeFrameStatePath(), {
-    hrefPreview: href,
-    showOnRight
-  })
-  windowStore.emitChanges()
-})
-
 ipc.on(messages.SHORTCUT_NEXT_TAB, () => {
   windowState = FrameStateUtil.makeNextFrameActive(windowState)
   updateTabPageIndex(FrameStateUtil.getActiveFrame(windowState))
@@ -495,5 +489,12 @@ frameShortcuts.forEach(shortcut => {
     })
   }
 })
+
+// Allows the parent process to send window level actions
+if (process.env.NODE_ENV === 'test') {
+  ipc.on('handle-action', (e, action) => {
+    doAction(action)
+  })
+}
 
 module.exports = windowStore

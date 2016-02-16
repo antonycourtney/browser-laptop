@@ -9,15 +9,16 @@ const AppActions = require('../actions/appActions')
 const ImmutableComponent = require('./immutableComponent')
 const Immutable = require('immutable')
 const cx = require('../lib/classSet.js')
-const UrlUtil = require('./../../node_modules/urlutil.js/dist/node-urlutil.js')
+const UrlUtil = require('../lib/urlutil')
 const messages = require('../constants/messages.js')
 const remote = global.require('electron').remote
+const path = require('path')
+const contextMenus = require('../contextMenus')
+const Config = require('../constants/config.js')
 
 import adInfo from '../data/adInfo.js'
-import Config from '../constants/config.js'
 import FindBar from './findbar.js'
-
-import { isSourceAboutUrl, getTargetAboutUrl } from '../lib/appUrlUtil.js'
+const { isSourceAboutUrl, getTargetAboutUrl } = require('../lib/appUrlUtil')
 
 class Frame extends ImmutableComponent {
   constructor () {
@@ -26,16 +27,17 @@ class Frame extends ImmutableComponent {
 
   updateWebview () {
     let src = this.props.frame.get('src')
-    const isAboutURL = isSourceAboutUrl(src)
-    if (isAboutURL) {
-      src = getTargetAboutUrl(src)
-    }
-    let contentScripts = ['content/webviewPreload.js']
-    if (this.props.frame.get('location') === 'about:preferences') {
-      contentScripts.push('content/aboutPreload.js')
-    }
-    contentScripts = contentScripts.join(',')
+    let location = this.props.frame.get('location')
+    let appRoot = window.baseHref
+      ? 'file://' + path.resolve(__dirname, '..', '..', 'app') + '/'
+      : ''
 
+    let contentScripts = [appRoot + 'content/scripts/webviewPreload.js']
+    if (['about:preferences', 'about:bookmarks', 'about:certerror'].includes(location)) {
+      contentScripts.push(appRoot + 'content/scripts/aboutPreload.js')
+    }
+
+    contentScripts = contentScripts.join(',')
     const contentScriptsChanged =
       this.webview && contentScripts !== this.webview.getAttribute('contentScripts')
 
@@ -59,7 +61,8 @@ class Frame extends ImmutableComponent {
     if (this.props.frame.get('guestInstanceId')) {
       this.webview.setAttribute('data-guest-instance-id', this.props.frame.get('guestInstanceId'))
     }
-    this.webview.setAttribute('src', src)
+    this.webview.setAttribute('src',
+                              isSourceAboutUrl(src) ? getTargetAboutUrl(src) : src)
     if (!this.webviewContainer.firstChild) {
       this.webviewContainer.appendChild(this.webview)
       this.addEventListeners()
@@ -132,6 +135,8 @@ class Frame extends ImmutableComponent {
 
     if (this.props.frame.get('location') === 'about:preferences') {
       this.webview.send(messages.SETTINGS_UPDATED, this.props.settings.toJS())
+    } else if (this.props.frame.get('location') === 'about:bookmarks') {
+      this.webview.send(messages.BOOKMARKS_UPDATED, this.props.bookmarks.toJS())
     }
   }
 
@@ -141,29 +146,28 @@ class Frame extends ImmutableComponent {
     this.webview.addEventListener('new-window', (e, url, frameName, disposition, options) => {
       e.preventDefault()
 
-      const guestInstanceId = e.options && e.options.webPreferences && e.options.webPreferences.guestInstanceId
-      const windowOptions = e.options && e.options.windowOptions || {}
-      windowOptions.parentWindowKey = remote.getCurrentWindow().id
-      windowOptions.disposition = e.disposition
+      let guestInstanceId = e.options && e.options.webPreferences && e.options.webPreferences.guestInstanceId
+      let windowOpts = e.options && e.options.windowOptions || {}
+      windowOpts.parentWindowKey = remote.getCurrentWindow().id
+      windowOpts.disposition = e.disposition
+      let delayedLoadUrl = e.options && e.options.delayedLoadUrl
+
+      let frameOpts = {
+        location: e.url,
+        parentFrameKey: this.props.frame.get('key'),
+        isPrivate: this.props.frame.get('isPrivate'),
+        partitionNumber: this.props.frame.get('partitionNumber'),
+        // use the delayed load url for the temporary title
+        delayedLoadUrl,
+        guestInstanceId
+      }
 
       if (e.disposition === 'new-window' || e.disposition === 'new-popup') {
-        AppActions.newWindow({
-          location: e.url,
-          parentFrameKey: this.props.frame.get('key'),
-          isPrivate: this.props.frame.get('isPrivate'),
-          partitionNumber: this.props.frame.get('partitionNumber'),
-          guestInstanceId
-        }, windowOptions)
+        AppActions.newWindow(frameOpts, windowOpts)
       } else {
-        const openInForeground = this.props.prefOpenInForeground === true ||
+        let openInForeground = this.props.prefOpenInForeground === true ||
           e.disposition !== 'background-tab'
-        WindowActions.newFrame({
-          location: e.url,
-          parentFrameKey: this.props.frame.get('key'),
-          isPrivate: this.props.frame.get('isPrivate'),
-          partitionNumber: this.props.frame.get('partitionNumber'),
-          guestInstanceId
-        }, openInForeground)
+        WindowActions.newFrame(frameOpts, openInForeground)
       }
     })
     this.webview.addEventListener('destroyed', (e) => {
@@ -181,7 +185,7 @@ class Frame extends ImmutableComponent {
         WindowActions.setFavicon(this.props.frame, e.favicons[0])
       }
     })
-    this.webview.addEventListener('page-title-set', ({title}) => {
+    this.webview.addEventListener('page-title-updated', ({title}) => {
       WindowActions.setFrameTitle(this.props.frame, title)
     })
     this.webview.addEventListener('dom-ready', (event) => {
@@ -189,14 +193,36 @@ class Frame extends ImmutableComponent {
         this.insertAds(event.target.src)
       }
     })
-    const frame = this.props.frame
     this.webview.addEventListener('ipc-message', (e) => {
-      let action = e.channel
-      switch (action.actionType) {
+      let method = () => {}
+      switch (e.channel) {
         case messages.THEME_COLOR_COMPUTED:
-          WindowActions.setThemeColor(frame, undefined, action.themeColor || null)
+          method = (computedThemeColor) =>
+            WindowActions.setThemeColor(this.props.frame, undefined, computedThemeColor || null)
           break
+        case messages.CONTEXT_MENU_OPENED:
+          method = (nodeProps, contextMenuType) => {
+            contextMenus.onMainContextMenu(nodeProps, contextMenuType)
+          }
+          break
+        case messages.STOP_LOAD:
+          method = () => this.webview.stop()
+          break
+        case messages.LINK_HOVERED:
+          method = (href, position) => {
+            position = position || {}
+            let nearBottom = position.y > (window.innerHeight - 150) // todo: magic number
+            let mouseOnLeft = position.x < (window.innerWidth / 2)
+            let showOnRight = nearBottom && mouseOnLeft
+            WindowActions.setLinkHoverPreview(href, showOnRight)
+          }
+          break
+        case messages.NEW_FRAME:
+          method = (location, openInForeground) => {
+            WindowActions.newFrame({ location }, openInForeground)
+          }
       }
+      method.apply(this, e.args)
     })
     this.webview.addEventListener('load-commit', (event) => {
       if (event.isMainFrame) {
@@ -207,7 +233,6 @@ class Frame extends ImmutableComponent {
         WindowActions.setLocation(event.url, key)
         WindowActions.setSecurityState({
           secure: urlParse(event.url).protocol === 'https:'
-          // TODO: Set extended validation once Electron exposes this
         })
       }
       WindowActions.updateBackForwardState(
@@ -226,22 +251,28 @@ class Frame extends ImmutableComponent {
     this.webview.addEventListener('did-stop-loading', () => {
     })
     this.webview.addEventListener('did-fail-load', () => {
+      WindowActions.onWebviewLoadEnd(
+        this.props.frame,
+        this.webview.getURL())
     })
     this.webview.addEventListener('did-finish-load', () => {
-    })
-    this.webview.addEventListener('did-navigate-in-page', () => {
       WindowActions.onWebviewLoadEnd(
         this.props.frame,
         this.webview.getURL())
       this.webview.send(messages.POST_PAGE_LOAD_RUN)
+      let security = this.props.frame.get('security')
+      if (this.props.frame.get('location') === 'about:certerror' &&
+          security && security.get('certDetails')) {
+        // Don't send certDetails.cert since it is big and crashes the page
+        this.webview.send(messages.CERT_DETAILS_UPDATED, {
+          url: security.get('certDetails').url,
+          error: security.get('certDetails').error
+        })
+      }
+    })
+    this.webview.addEventListener('did-navigate-in-page', () => {
     })
     this.webview.addEventListener('did-frame-finish-load', (event) => {
-      if (event.isMainFrame) {
-        WindowActions.onWebviewLoadEnd(
-          this.props.frame,
-          this.webview.getURL())
-        this.webview.send(messages.POST_PAGE_LOAD_RUN)
-      }
     })
     this.webview.addEventListener('media-started-playing', ({title}) => {
       WindowActions.setAudioPlaybackActive(this.props.frame, true)

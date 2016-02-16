@@ -3,7 +3,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import Immutable from 'immutable'
-import Config from '../constants/config.js'
+const Config = require('../constants/config.js')
 
 export function isFrameKeyActive (windowState, frameKey) {
   return windowState.get('activeFrameKey') === frameKey
@@ -145,12 +145,15 @@ function isAncestorFrameKey (frames, frame, parentFrameKey) {
  */
 export function addFrame (frames, frameOpts, newKey, partitionNumber, activeFrameKey) {
   const url = frameOpts.location || Config.defaultUrl
+  const navbarFocus = activeFrameKey === newKey &&
+                      url === Config.defaultUrl &&
+                      frameOpts.delayedLoadUrl === undefined
   const frame = Immutable.fromJS({
     zoomLevel: Config.zoom.defaultValue,
     audioMuted: false, // frame is muted
     canGoBack: false,
     canGoForward: false,
-    location: url, // page url
+    location: frameOpts.delayedLoadUrl || url, // page url
     src: url, // what the iframe src should be
     isPrivate: frameOpts.isPrivate || false,
     partitionNumber,
@@ -162,7 +165,7 @@ export function addFrame (frames, frameOpts, newKey, partitionNumber, activeFram
     guestInstanceId: frameOpts.guestInstanceId,
     navbar: {
       searchSuggestions: true,
-      focused: true,
+      focused: navbarFocus,
       urlbar: {
         location: url,
         urlPreview: '',
@@ -171,8 +174,8 @@ export function addFrame (frames, frameOpts, newKey, partitionNumber, activeFram
           searchResults: [],
           suggestionList: null
         },
-        selected: true,
-        focused: true,
+        selected: navbarFocus,
+        focused: navbarFocus,
         active: false
       }
     },
